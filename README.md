@@ -126,7 +126,7 @@ source .venv/bin/activate
 
 ```bash
 git clone https://github.com/arash7444/wind_data_analysis_public.git
-cd wind_data_analysis
+cd wind_data_analysis_public
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
