@@ -160,7 +160,6 @@ Example (`input_files/input_config.json`):
     "start_date": "2020-05-01",
     "end_date": "2020-05-03",
     "features": ["shear", "ti"],
-    "stats_height": 120.0,
     "hub_height": 120.0,
     "shear_window": 6,
     "show_plot": true,
