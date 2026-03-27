@@ -1,0 +1,11 @@
+{
+  "data_folder": "tests/lidar_data",
+  "start_date": "2020-05-01",
+  "end_date": "2020-05-03",
+  "features": ["ti", "shear"],
+  "hub_height": 120.0,
+  "shear_window": 6,
+  "show_plot": true,
+  "save_dir": "outputs",
+  "extra_plots": true
+}

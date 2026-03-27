@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "wind_data_analysis"
+version = "0.1.0"
+description = "This tool is used to analyze wind data from LiDAR data and met-mast data"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Arash" }
+]
+dependencies = [
+    "numpy",
+	"plotly",
+	"seaborn",
+    "pandas",
+    "matplotlib",
+	"streamlit",
+	"scipy",
+	"xarray",
+	"pytest",
+]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

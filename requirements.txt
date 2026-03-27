@@ -1,0 +1,11 @@
+numpy
+plotly
+seaborn
+pandas
+matplotlib
+streamlit
+scipy
+xarray
+pytest 
+kaleido
+streamlit
