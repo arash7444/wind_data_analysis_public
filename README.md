@@ -5,7 +5,7 @@
 ![Tests](https://img.shields.io/badge/tests-pytest-green)
 ![Status](https://img.shields.io/badge/status-active--development-orange)
 ![CI](https://github.com/arash7444/wind_data_analysis_public/actions/workflows/ci-pipeline.yml/badge.svg)
-
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
 `Wind Data Analysis` is a Python tool for analyzing wind measurement data, with a current focus on **LiDAR-based wind data processing** (met-mast support planned for future versions). 
 
 This tool is designed to support wind engineering workflows such as load validation, site assessment, and LiDAR-based analysis.
