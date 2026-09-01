@@ -14,14 +14,15 @@ authors = [
 ]
 dependencies = [
     "numpy",
-	"plotly",
-	"seaborn",
+    "plotly",
+    "seaborn",
     "pandas",
     "matplotlib",
-	"streamlit",
-	"scipy",
-	"xarray",
-	"pytest",
+    "streamlit",
+    "scipy",
+    "xarray",
+    "pytest",
+    "scikit-learn>=1.7.2",
 ]
 [tool.setuptools.packages.find]
 where = ["src"]
