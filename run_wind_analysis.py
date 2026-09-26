@@ -18,6 +18,7 @@ from wind_data_analysis.process import (
     calc_shear,
 )
 from wind_data_analysis.process.calc_turb import calc_ti
+from wind_data_analysis.plotting import plot_ti_polar_by_height, plot_wind_statistics
 
 
 def run_program_from_input(input_file: str | Path):
@@ -59,7 +60,12 @@ def run_program_from_input(input_file: str | Path):
         )
 
     # convert all feature names to lower case
+    if isinstance(features, str):
+        features = [features]
     features = [item.lower() for item in features]
+    unknown = set(features) - {"ti", "shear", "stats", "ti_polar"}
+    if unknown:
+        raise ValueError(f"Unknown features: {sorted(unknown)}")
 
     # ------------------------------------------------------------------
     # find lidar files
@@ -119,9 +125,34 @@ def run_program_from_input(input_file: str | Path):
     # ------------------------------------------------------------------
     # feature : TI
     # ------------------------------------------------------------------
-    if "ti" in features:
+    if "ti" in features or "ti_polar" in features:
         ti_values = calc_ti(lidar_avg_all, lidar_std_all, hub_height=hub_height)
 
+    if "ti_polar" in features:
+        fig_polar = plot_ti_polar_by_height(
+            ti_values.ti_raw,
+            heights=input_data.get("polar_heights"),
+            ti_stat=input_data.get("polar_stat", "median"),
+            ncols=input_data.get("polar_ncols", 2),
+        )
+        html_name = Path(save_dir) / "TI_polar_by_height.html"
+        fig_polar.write_html(html_name)
+        print(f"TI polar plot is saved in: {html_name}")
+        if show_plot:
+            fig_polar.show()
+
+    if "stats" in features:
+        fig_stats, selected_height = plot_wind_statistics(
+            lidar_avg_all, lidar_max_all, lidar_min_all, lidar_std_all,
+            height=input_data.get("stats_height", hub_height),
+        )
+        html_name = Path(save_dir) / f"stats_{selected_height:g}m.html"
+        fig_stats.write_html(html_name)
+        print(f"Wind statistics at {selected_height:g} m are saved in: {html_name}")
+        if show_plot:
+            fig_stats.show()
+
+    if "ti" in features:
         # main TI boxplot
         fig_ti = px.box(
             ti_values.ti_raw,
@@ -152,7 +183,7 @@ def run_program_from_input(input_file: str | Path):
 
                 fig_ti_hub.add_trace(
                     go.Scatter(
-                        x=ti_hub.index,
+                        x=ti_hub["Time"],
                         y=ti_hub["ti"],
                         mode="lines+markers",
                         name=f"TI at {hub_height}m",
@@ -213,7 +244,7 @@ def run_program_from_input(input_file: str | Path):
                 ].copy()
 
                 if len(ti_hub) > 0:
-                    ti_hub["wsp"] = lidar_avg_all.loc[ti_hub.index, hub_col].values
+                    ti_hub["wsp"] = ti_hub["wind_speed"]
 
                     fig_ti_scatter = go.Figure()
 
@@ -426,5 +457,8 @@ def run_program_from_input(input_file: str | Path):
 
 
 if __name__ == "__main__":
-    input_file = Path(".", "input_files", "input_config.json")
-    run_program_from_input(input_file)
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run wind analysis from a JSON config.")
+    parser.add_argument("config", nargs="?", default="input_files/input_config.json")
+    run_program_from_input(parser.parse_args().config)

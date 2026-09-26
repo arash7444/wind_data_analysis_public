@@ -1,0 +1,15 @@
+{
+  "data_folder": "tests/lidar_data",
+  "start_date": "2020-05-01",
+  "end_date": "2020-05-03",
+  "features": ["ti", "shear", "stats", "ti_polar"],
+  "hub_height": 139.0,
+  "stats_height": 139.0,
+  "polar_heights": [19, 59, 139, 199],
+  "polar_stat": "median",
+  "polar_ncols": 2,
+  "shear_window": 6,
+  "show_plot": false,
+  "save_dir": "outputs/extended",
+  "extra_plots": true
+}

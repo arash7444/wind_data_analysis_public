@@ -27,7 +27,7 @@ def bin_wdir(df):
 
     """
     # ==== Now Compute binned TI by wind speed ---
-    bins = np.arange(0, 360.0, 10)
+    bins = np.arange(0, 361.0, 10)
     labels = [
         f"{int(bins[i])}-{int(bins[i + 1])}" for i in range(len(bins) - 1)
     ]  # e.g., 0-10, 10-20, etc. so i can add them as columns easily
