@@ -94,10 +94,24 @@ print(ml_data.isna().sum())
 
 
 # split the data into training and testing sets chronologically
-train_data, test_data = chronological_split(
+
+from sklearn.model_selection import train_test_split
+
+# Split the complete DataFrame so the timestamps remain available.
+# shuffle=False preserves chronological order:
+# earlier observations go into training, and later observations go into testing.
+train_data, test_data = train_test_split(
+    ml_data,
+    test_size=0.30,
+    shuffle=False,
+)
+
+# this is manual split, but I prefer to use sklearn's train_test_split with shuffle=False
+train_data_2, test_data_2 = chronological_split(
     ml_data,
     test_fraction=0.30,
 )
+
 
 print("Training shape:", train_data.shape)
 print("Test shape:", test_data.shape)

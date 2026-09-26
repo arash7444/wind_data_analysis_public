@@ -175,7 +175,6 @@ def create_ml_inputs(
     if train_data.empty or test_data.empty:
         raise ValueError("Training and test datasets must not be empty.")
 
-    # Check both datasets before selecting the feature and target.
     for dataset_name, dataset in [
         ("train_data", train_data),
         ("test_data", test_data),
