@@ -3,3 +3,4 @@ from .read_KNMI_LiDAR import (
     read_KNMI_LiDAR,
 )
 from .clean_data import clean_data
+from .read_KNMI_metmast import met_finder, read_met

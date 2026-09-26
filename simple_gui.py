@@ -18,6 +18,7 @@ from wind_data_analysis.process import (
 )
 from wind_data_analysis.process.calc_turb import calc_ti
 from wind_data_analysis.utils import lidar_height
+from wind_data_analysis.plotting import plot_ti_polar_by_height, plot_wind_statistics
 
 
 def load_and_process_lidar_data(
@@ -153,7 +154,7 @@ def plot_ti_timeseries_at_hub(ti_values, hub_height: float):
     # add TI time series
     fig.add_trace(
         go.Scatter(
-            x=ti_hub.index,
+            x=ti_hub["Time"],
             y=ti_hub["ti"],
             mode="lines+markers",
             name=f"TI at {hub_height}m",
@@ -225,7 +226,7 @@ def plot_ti_vs_wsp(ti_values, lidar_avg_all, hub_height: float):
         return None
 
     # add wind speed values at the same timestamps
-    ti_hub["wsp"] = lidar_avg_all.loc[ti_hub.index, hub_col].values
+    ti_hub["wsp"] = ti_hub["wind_speed"]
 
     fig = go.Figure()
 
@@ -284,8 +285,8 @@ def plot_ti_wsp_and_ti_time_series(ti_values, lidar_avg_all, hub_height: float):
     # add hub-height wind speed time series
     fig.add_trace(
         go.Scatter(
-            x=ti_hub.index,
-            y=lidar_avg_all.loc[ti_hub.index, hub_col],
+            x=ti_hub["Time"],
+            y=ti_hub["wind_speed"],
             mode="lines+markers",
             name="Wind speed",
         ),
@@ -296,7 +297,7 @@ def plot_ti_wsp_and_ti_time_series(ti_values, lidar_avg_all, hub_height: float):
     # add TI time series
     fig.add_trace(
         go.Scatter(
-            x=ti_hub.index,
+            x=ti_hub["Time"],
             y=ti_hub["ti"],
             mode="lines+markers",
             name="TI",
@@ -530,7 +531,7 @@ def main():
         # feature selection
         features = st.multiselect(
             "Features",
-            options=["ti", "shear"],
+            options=["ti", "shear", "stats", "ti_polar"],
             default=["ti"],
         )
 
@@ -547,6 +548,19 @@ def main():
             value=6,
             step=1,
         )
+
+        stats_height = hub_height
+        if "stats" in features:
+            stats_height = st.number_input(
+                "Statistics height [m] (nearest measured height)", value=120.0, step=1.0,
+            )
+        polar_heights_text = ""
+        polar_stat = "median"
+        if "ti_polar" in features:
+            polar_heights_text = st.text_input(
+                "Polar heights [m], comma separated (blank = all)", value="",
+            )
+            polar_stat = st.selectbox("TI statistic for polar plots", ["median", "mean"])
 
         # run button
         run_button = st.button("Run analysis", type="primary")
@@ -587,9 +601,7 @@ def main():
             # ----------------------------------------------------------
             # TI
             # ----------------------------------------------------------
-            if "ti" in features:
-                st.header("Turbulence Intensity (TI)")
-
+            if "ti" in features or "ti_polar" in features:
                 # calculate TI values
                 with st.spinner("Calculating TI..."):
                     ti_values = calc_ti(
@@ -598,6 +610,28 @@ def main():
                         hub_height=hub_height,
                     )
 
+            if "ti_polar" in features:
+                st.header("TI by direction and reference wind speed")
+                polar_heights = (
+                    [float(h.strip()) for h in polar_heights_text.split(",")]
+                    if polar_heights_text.strip() else None
+                )
+                st.plotly_chart(
+                    plot_ti_polar_by_height(ti_values.ti_raw, polar_heights, polar_stat),
+                    use_container_width=True,
+                )
+
+            if "stats" in features:
+                st.header("Wind statistics")
+                fig_stats, selected_height = plot_wind_statistics(
+                    lidar_avg_all, lidar_max_all, lidar_min_all, lidar_std_all,
+                    height=stats_height,
+                )
+                st.caption(f"Using measured height {selected_height:g} m (requested {stats_height:g} m).")
+                st.plotly_chart(fig_stats, use_container_width=True)
+
+            if "ti" in features:
+                st.header("Turbulence Intensity (TI)")
                 # main TI plot
                 st.plotly_chart(plot_ti_main(ti_values), use_container_width=True)
 
