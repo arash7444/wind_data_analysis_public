@@ -4,9 +4,9 @@
 
 `wind_data_analysis` is a Python package and pair of applications for processing KNMI wind measurements, primarily ZephIR LiDAR CSV files. It discovers measurements by date, converts raw or already averaged inputs into a common set of 10-minute statistics, organizes measurements into height profiles, calculates turbulence intensity (TI) and power-law vertical shear, and creates interactive Plotly figures.
 
-The current `dev` branch is also the current `main` branch at commit `2182eb5`. A separate `ML` branch contains exploratory TI regression code, but that code is not importable from `dev` and is intentionally outside the runnable demonstrations in this guide.
+This guide describes the current public package without relying on a stale branch name or commit identifier. Machine-learning code is intentionally outside the supported workflow.
 
-Met-mast support is experimental. It can read KNMI monthly NetCDF files into a tidy DataFrame, but it is not connected to the runner or Streamlit application and is not used by the LiDAR calculations.
+Met-mast support reads KNMI monthly NetCDF files and compares 10-minute mean horizontal wind speed with dynamically paired LiDAR heights through the runner, Streamlit app, and reusable package functions.
 
 ## Main capabilities
 
@@ -19,7 +19,7 @@ Met-mast support is experimental. It can read KNMI monthly NetCDF files into a t
 7. Calculate TI as wind-speed standard deviation divided by mean wind speed, reshape it into tidy form, attach speed/direction context, and bin it.
 8. Plot wind statistics and TI by direction/reference-speed bin.
 9. Run the workflow through a JSON-configured command-line script or a Streamlit GUI.
-10. Read selected KNMI met-mast NetCDF variables into tidy form for separate Python use.
+10. Read KNMI met-mast NetCDF data, align validated 10-minute timestamps, dynamically pair nearby heights, and calculate per-height wind-speed comparison metrics.
 
 ## End-to-end data flow
 
@@ -57,7 +57,7 @@ compute_lidar_stats
            Plotly HTML / Streamlit charts / CSV reports
 ```
 
-The met-mast path is independent: `met_finder` selects monthly `.nc` files and `read_met` turns each file into tidy measurements. No current function combines those measurements with LiDAR data.
+For comparison, `met_finder` selects monthly `.nc` files and `read_met` creates tidy measurements. `compare_lidar_to_metmast` discovers heights, performs deterministic one-to-one pairing, validates and normalizes the 10-minute timestamps, aligns each pair independently, and returns matched data, metrics, and diagnostics used by both applications.
 
 ## Repository structure
 
@@ -105,7 +105,7 @@ Responsibility: locate and read KNMI LiDAR CSV files.
 - Called by: both applications, examples, tests, and commented module demonstrations.
 - Side effects: prints when passed a file or when a filename has no recognized date.
 - Assumptions: dated filtering expects `YYYYMMDD`, `YYYY-MM-DD`, or `YYYY_MM_DD` somewhere in the filename.
-- Limitations: supplying `start_date` without `end_date` causes a comparison with `None`; supplying only `end_date` does not filter; returned order is not explicitly sorted; a nonexistent path silently produces an empty list.
+- Limitations: returned order is not explicitly sorted, and a nonexistent path silently produces an empty list. Start-only and end-only filtering are supported independently.
 - Example: `find_KNMI_LiDAR_files("tests/lidar_data", "2020-05-01", "2020-05-03")`.
 
 #### `read_KNMI_LiDAR(file_path) -> pd.DataFrame`
@@ -344,8 +344,8 @@ Defines `ShearValues` with raw alpha, standard error, rolling median, and rollin
 #### `run_program_from_input(input_file) -> None`
 
 - Responsibility: complete batch application driven by JSON.
-- Required setting: `data_folder`; optional date bounds, features, heights, plotting, and output settings.
-- Supported features: `ti`, `shear`, `stats`, and `ti_polar`.
+- Instrument inputs use `data_folder_lidar` with optional `start_date_lidar`/`end_date_lidar`, and `data_folder_Metmast` with optional `start_date_Metmast`/`end_date_Metmast`. A folder is required only when a selected feature needs that instrument; legacy LiDAR keys remain accepted.
+- Supported features: `ti`, `shear`, `stats`, `ti_polar`, `metmast_data`, and `metmast_comparison`.
 - Outputs: creates `save_dir`, prints progress, writes multiple Plotly HTML files, and optionally opens figures with `show_plot`.
 - Called by: its CLI block and runner regression tests.
 - Assumptions: execution starts from a directory where config-relative data/output paths resolve correctly.
@@ -363,7 +363,7 @@ This is an application rather than reusable package code.
 
 Parameters are the relevant process dataclasses/DataFrames plus numeric hub height; figure functions return a Plotly figure or `None` when an exact hub-height series is unavailable. Their primary caller is `main`; equivalent plotting logic also exists inline in the runner. Streamlit calls are the main side effect. Run with `uv run streamlit run simple_gui.py`.
 
-Limitations include code duplication, broad exception handling that hides tracebacks from users, exact-height behavior that differs from TI's nearest-height reference selection, and no met-mast integration. Several short function docstrings omit full parameter/return contracts.
+Limitations include code duplication in the older LiDAR-only plots, broad exception handling that hides tracebacks from users, and exact-height behavior in some TI extras that differs from TI's nearest-height reference selection. Met-mast scientific calculations and plots are shared rather than duplicated.
 
 ### Package `__init__.py` files
 
@@ -376,13 +376,13 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 - `simple_gui.py` is an interactive application: it owns Streamlit state and rendering.
 - `examples/` contains small learning programs. They deliberately call public project functions and save reproducible results but are not a second implementation.
 - `tests/` defines automated expectations and supplies compact real/synthetic data. Tests are not user-facing demonstrations.
-- The existing untracked `demo/study_analyze.py` is exploratory scratch work. It includes repeated imports, absolute-style Windows separators, commented experiments, and an outdated `compute_lidar_stats(data, 10)` call; it is not considered a supported application.
+- `demo/study_analyze.py` is exploratory scratch work and is not considered a supported application. The concise supported comparison demonstration is `examples/demo_metmast_comparison.py`.
 
 ## Normal user workflow
 
 1. Install `uv`, ensure Python 3.10+ is available, and run `uv sync --locked --dev` from the repository root.
 2. Put compatible KNMI LiDAR CSV files in a folder, retaining dates in filenames.
-3. Copy and edit `input_files/input_config_extended.json` with a data folder, `[start_date, end_date)`, desired features, and a non-interactive `show_plot` choice.
+3. Copy and edit an `input_files/` example with the applicable instrument folder, optional instrument-specific date bounds, desired features, and a non-interactive `show_plot` choice.
 4. Run `uv run python run_wind_analysis.py your_config.json`.
 5. Open the generated HTML files in `save_dir`, or use `uv run streamlit run simple_gui.py` for interactive exploration.
 6. For programmatic work, call readers, statistics, TI/shear, and plotting functions separately as shown in `examples/`.
@@ -390,22 +390,22 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 
 ## Unfinished, duplicated, deprecated, or experimental areas
 
-- ML is branch-only and skipped in current-branch documentation/demos.
-- Met-mast loading is experimental and disconnected from analysis applications.
+- Machine learning is outside the supported workflow.
+- Met-mast comparison is limited to uncorrected horizontal wind speed at nearby measured heights.
 - `clean_data` exists but calls are commented out in statistics processing.
 - Runner and GUI duplicate the complete load path and much Plotly construction.
 - Several modules retain unused imports and long commented-out `__main__` prototypes.
-- `demo/study_analyze.py` is exploratory and not runnable end to end in its current form.
+- `demo/study_analyze.py` remains exploratory; supported runnable demonstrations live under `examples/`.
 - The historical patch is not runtime code and may become stale relative to the repository.
 - Runtime dependencies are declared in `pyproject.toml`; `pytest` is isolated in the `dev` dependency group, and exact resolutions are committed in `uv.lock`.
 - CI uses the committed lockfile across Python 3.10–3.14 on both Windows and Ubuntu.
-- README says met-mast support was tested only synthetically, but real KNMI sample files are now present and the reader successfully handles them; engineering validation remains necessary.
+- The bundled real KNMI files exercise the met-mast comparison end to end; engineering validation and source quality review remain necessary.
 
 ## Known issues and effects
 
 1. **Negative-speed TI filtering does not align.** `calc_ti` renames TI columns before reindexing mean speeds against them, producing an all-missing mask. Negative mean speed can yield negative TI and remain because the final filter only removes `ti >= 1`. Effect: invalid negative observations can affect medians and plots. `tests/test_known_limitations.py` records the intended rejection as `xfail`. Proposed correction: construct the validity mask before renaming or align columns explicitly, then review whether zero, negative, and sentinel speeds should be dropped before division.
 2. **Direction averaging is linear.** Raw samples around 359° and 1° average near 180°, not north. Effect: 10-minute direction and direction-binned TI can be wrong near wraparound. Proposed correction: adopt a reviewed circular-mean convention and test it before changing results.
-3. **One-sided date arguments are inconsistent for LiDAR discovery.** Start-only can error; end-only is ignored. Effect: surprising selection or failure. This is API behavior rather than a scientific formula and should receive focused tests before correction.
+3. **LiDAR filename dates are day-resolution.** Discovery supports independent start-only and end-only bounds, while the runner applies exact timestamp filtering after reading. Effect: custom filenames still need a parseable date for folder discovery.
 4. **Two-point shear uncertainty is undefined.** The residual degrees of freedom are zero. Effect: warnings and non-finite uncertainty, while alpha may still be returned. Decide whether at least three points should be required for uncertainty or whether alpha-with-missing-error is acceptable.
 5. **Negative shear is discarded.** Stable/inverted profiles can produce negative alpha, but the implementation converts it to missing. Effect: the shear distribution is biased if negative shear is meaningful for the intended engineering workflow. This needs a domain decision, not a silent code change.
 6. **No quality-control path is active.** Instrument flags and most sentinel/invalid values are not filtered. Effect: bad measurements can propagate into statistics, TI, shear, and plots.
@@ -418,6 +418,6 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 3. Extract one reusable LiDAR workflow service returning a typed result, and make both runner and GUI call it.
 4. Add focused unit tests for every process function, especially raw/low-resolution equivalence, date-bound edge cases, circular direction, two-point shear, and duplicate timestamps.
 5. Add explicit configuration validation and consistent nearest-height selection/reporting across batch and GUI paths.
-6. Integrate met-mast data only after validating units, quality flags, and representative real files; keep it clearly experimental until then.
+6. Extend met-mast analysis only after defining reviewed units and quality-flag policies; the current comparison deliberately leaves source values uncorrected.
 7. Separate runtime, plotting/UI, and development dependencies, remove duplicates/unused imports, and add a configured formatter/linter.
 8. Decide later whether to merge, redesign, or retire the separate `ML` branch; it should not be presented as a current capability until merged and tested.

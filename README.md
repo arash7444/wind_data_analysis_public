@@ -8,7 +8,8 @@
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 
-`Wind Data Analysis` is a Python tool for analyzing wind measurement data, with a current focus on **LiDAR-based wind data processing** (met-mast support planned for future versions). 
+`Wind Data Analysis` is a Python tool for LiDAR processing and multi-height
+LiDAR-versus-met-mast wind-speed comparison.
 
 This tool is designed to support wind engineering workflows such as load validation, site assessment, and LiDAR-based analysis.
 
@@ -20,13 +21,16 @@ The package helps you:
 - build wind-speed profiles across heights,
 - calculate **vertical wind shear**,
 - calculate **turbulence intensity (TI)**,
+- align KNMI met-mast observations with LiDAR 10-minute means,
+- compare dynamically selected, nearby measurement-height pairs,
 - prepare data for plotting and further analysis.
 
 The repository is organized as a Python package with a `src/` layout and includes tests and example datasets for development and validation.  
 
 ## Current status
 
-At the moment, the tool is mainly centered on **KNMI LiDAR workflows**.  
+The tool supports KNMI LiDAR workflows and an optional first-version
+LiDAR/met-mast horizontal wind-speed comparison.
 **Please note** that this project is under active development and new features are continuously being added.
 
 
@@ -149,9 +153,9 @@ Example (`input_files/input_config.json`):
 
 ```json
 {
-    "data_folder": "tests/lidar_data",
-    "start_date": "2020-05-01",
-    "end_date": "2020-05-03",
+    "data_folder_lidar": "tests/lidar_data",
+    "start_date_lidar": "2020-05-01",
+    "end_date_lidar": "2020-05-03",
     "features": ["shear", "ti"],
     "hub_height": 120.0,
     "shear_window": 6,
@@ -231,11 +235,127 @@ fig = plot_ti_polar_by_height(ti_values.ti_raw, heights=[19, 139])
 fig.show()  # Or fig.write_html("ti_polar.html")
 ```
 
-## Experimental met-mast reader
+## LiDAR and met-mast comparison
 
-The earlier KNMI NetCDF reader is available for Python use. It is **not yet
-connected to the LiDAR runner or GUI** and has only been tested with synthetic
-NetCDF data; validate it with a representative KNMI file before engineering use.
+The runner and Streamlit app can compare 10-minute mean horizontal wind speed
+from KNMI LiDAR CSV and met-mast NetCDF data. The package discovers the heights
+present in each input; production code does not contain Cabauw-specific height
+lists. It then selects a deterministic one-to-one matching that first maximizes
+the number of pairs within `max_height_difference_m`, then minimizes their total
+absolute height difference. Exact ties prefer lower height pairs. The default
+maximum difference is 2 m, and unpaired heights are reported.
+
+Near-height pairs are not treated as identical heights. Tables and plots always
+retain both actual heights and their difference. No vertical interpolation,
+extrapolation, calibration, regression correction, direction comparison, shear
+comparison, or turbulence-intensity comparison is applied.
+
+Run the bundled one-day comparison with:
+
+```bash
+uv run python run_wind_analysis.py input_files/input_config_metmast_comparison.json
+```
+
+The flat JSON configuration is:
+
+```json
+{
+  "data_folder_lidar": "tests/lidar_data",
+  "start_date_lidar": "2020-06-07",
+  "end_date_lidar": "2020-06-08",
+  "data_folder_Metmast": "tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc",
+  "start_date_Metmast": "2020-06-07",
+  "end_date_Metmast": "2020-06-08",
+  "features": ["metmast_comparison"],
+  "max_height_difference_m": 2.0,
+  "timestamp_tolerance_seconds": 30.0,
+  "show_plot": false,
+  "save_dir": "outputs/metmast_comparison"
+}
+```
+
+LiDAR and met-mast inputs are independent. Each folder is required only when a
+selected feature uses that instrument, and every date bound may be omitted:
+
+| Setting | Meaning |
+|---|---|
+| `data_folder_lidar` | LiDAR CSV file or folder |
+| `start_date_lidar`, `end_date_lidar` | Optional inclusive start and exclusive end for LiDAR |
+| `data_folder_Metmast` | Met-mast NetCDF file or folder |
+| `start_date_Metmast`, `end_date_Metmast` | Optional inclusive start and exclusive end for met-mast data |
+
+Legacy LiDAR-only `data_folder`, `start_date`, and `end_date` keys remain
+accepted, but new configurations should use the instrument-specific names.
+
+Both folder settings accept a single file or a folder. Each instrument's start
+is inclusive and end is exclusive, and all four date fields are optional. When
+both instruments are compared, only the overlap of their configured or
+data-derived periods is used. A missing overlap produces a clear error.
+`timestamp_tolerance_seconds` defaults to 30 seconds.
+
+NetCDF floating-time offsets are normalized to the nearest 10-minute grid only
+when they are within that tolerance. Larger offsets raise an error instead of
+being hidden. Indexes are sorted, and duplicate timestamps found after
+normalization are reported as errors. Alignment is an exact inner join on the
+validated grid; it is not a broad nearest-time merge or a full-interval shift.
+Missing wind speeds are removed independently for each height pair.
+
+Metrics are calculated separately for every successful pair:
+
+| Metric | Definition and units |
+|---|---|
+| LiDAR mean | Mean matched LiDAR wind speed, m/s |
+| Met-mast mean | Mean matched mast wind speed, m/s |
+| Bias | Mean of `LiDAR − met mast`, m/s; positive means LiDAR is higher |
+| MAE | Mean absolute LiDAR/met-mast error, m/s |
+| RMSE | Root mean squared LiDAR/met-mast error, m/s |
+| Pearson correlation | Linear association, dimensionless; missing when data are insufficient or constant |
+| Availability | Matched non-missing count divided by scheduled 10-minute periods in the LiDAR/met-mast overlap, percent |
+
+The metrics and pairing report also include source counts, timestamps shared
+before missing-value removal, final matched count, and actual instrument heights.
+Correlation describes association, not agreement.
+
+The runner writes these files under `save_dir`:
+
+- `metmast_matched_data.csv` (including normalized and original source times);
+- `metmast_metrics.csv` and `metmast_height_pairs.csv`;
+- `metmast_timeseries.html`, `metmast_scatter.html`,
+  `metmast_difference.html`, and `metmast_summary.html`.
+
+In Streamlit, select `metmast_comparison`, enter a NetCDF file/folder, and set
+the maximum height difference. The app displays discovered and unmatched
+heights, pair diagnostics, metrics, and the same reusable plots.
+
+### Met-mast data by itself
+
+Use the `metmast_data` feature without any LiDAR input to load, summarize, and
+export tidy met-mast observations:
+
+```bash
+uv run python run_wind_analysis.py input_files/input_config_metmast_data.json
+```
+
+The example writes `outputs/metmast_data/metmast_data.csv` and prints the
+selected files, period, total rows, source rows per height, valid wind-speed
+counts, and mean wind speed. Its configuration is:
+
+```json
+{
+  "data_folder_Metmast": "tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc",
+  "start_date_Metmast": "2020-06-07",
+  "end_date_Metmast": "2020-06-08",
+  "features": ["metmast_data"],
+  "show_plot": false,
+  "save_dir": "outputs/metmast_data"
+}
+```
+
+Remove either or both date fields to use an open-ended or fully unbounded
+period. In Streamlit, `metmast_data` displays the same summary and provides a
+tidy CSV download.
+
+For direct Python use:
 
 ```python
 from wind_data_analysis.data_reader import met_finder, read_met
@@ -252,9 +372,9 @@ measurements. Values retain their input units; no quality-flag filtering is
 applied. Some NetCDF formats may require an additional xarray backend such as
 `netCDF4` installed in your environment.
 
-These features were adapted from the original `wind_data_analysis` project's
-polar plot, v2 runner and met-mast reader. The additional Streamlit prototypes
-with generated data are not used by this application.
+The comparison intentionally preserves input wind-speed values and applies no
+additional quality filtering. Users must review source units, instrument flags,
+and suitability for engineering decisions.
 
 ## Demo
 

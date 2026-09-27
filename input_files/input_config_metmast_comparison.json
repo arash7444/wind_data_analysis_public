@@ -1,0 +1,13 @@
+{
+  "data_folder_lidar": "tests/lidar_data",
+  "start_date_lidar": "2020-06-07",
+  "end_date_lidar": "2020-06-08",
+  "data_folder_Metmast": "tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc",
+  "start_date_Metmast": "2020-06-07",
+  "end_date_Metmast": "2020-06-08",
+  "features": ["metmast_comparison"],
+  "max_height_difference_m": 2.0,
+  "timestamp_tolerance_seconds": 30.0,
+  "show_plot": false,
+  "save_dir": "outputs/metmast_comparison"
+}

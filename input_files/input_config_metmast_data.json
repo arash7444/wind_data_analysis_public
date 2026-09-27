@@ -1,0 +1,8 @@
+{
+  "data_folder_Metmast": "tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc",
+  "start_date_Metmast": "2020-06-07",
+  "end_date_Metmast": "2020-06-08",
+  "features": ["metmast_data"],
+  "show_plot": false,
+  "save_dir": "outputs/metmast_data"
+}

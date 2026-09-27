@@ -1,8 +1,4 @@
-"""Experimental KNMI met-mast reader adapted from the original private project.
-
-This returns tidy measurements for Python use. The LiDAR runner and GUI do
-not yet accept met-mast inputs. Validate against your real NetCDF files.
-"""
+"""Read KNMI met-mast NetCDF data for package, runner, and GUI workflows."""
 
 from pathlib import Path
 import re
@@ -73,4 +69,4 @@ def read_met(met_nc_file: str | Path, start_date=None, end_date=None) -> pd.Data
         frame = frame[frame.index >= start]
     if end is not None:
         frame = frame[frame.index < end]
-    return frame.dropna(subset=["height", "wind_speed"])
+    return frame.dropna(subset=["height"])

@@ -36,6 +36,9 @@ def find_KNMI_LiDAR_files(
     if end_date is not None:
         end_date = pd.Timestamp(end_date)
 
+    if start_date is not None and end_date is not None and start_date >= end_date:
+        raise ValueError("start_date must be before end_date.")
+
     CSV_files = []
     if os.path.isfile(file_folder):
         print("The path includes a file.")
@@ -44,10 +47,7 @@ def find_KNMI_LiDAR_files(
         for root, dirs, files in os.walk(os.path.join(file_folder)):
             for file in files:
                 if file.endswith(".CSV") or file.endswith(".csv"):
-                    if start_date is None:
-                        tmp = os.path.join(root, file)
-                        CSV_files.append(tmp)
-                    else:
+                    if start_date is not None or end_date is not None:
                         filename = file
 
                         file_day = extract_date_from_filename(filename)
@@ -57,9 +57,12 @@ def find_KNMI_LiDAR_files(
                             )
                             continue
 
-                        if (file_day >= start_date) and (file_day < end_date):
-                            tmp = os.path.join(root, file)
-                            CSV_files.append(tmp)
+                        if start_date is not None and file_day < start_date:
+                            continue
+                        if end_date is not None and file_day >= end_date:
+                            continue
+                    tmp = os.path.join(root, file)
+                    CSV_files.append(tmp)
 
     return CSV_files
 

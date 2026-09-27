@@ -1,4 +1,5 @@
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 from wind_data_analysis.data_reader import read_KNMI_LiDAR
 
@@ -382,19 +383,29 @@ lidar_10min = (
 
 
 
-mast_140m_wsp = (
-    mast_data[["wind_speed"]]
-    .rename(columns={"wind_speed": "mast_140m"})
-)
-common_idx = mast_140m_wsp.index.intersection(lidar_10min.index)
-mast_align = mast_140m_wsp.loc[common_idx]
-lidar_align = lidar_10min.loc[common_idx]
+# mast_140m_wsp = (
+#     mast_data[["wind_speed"]]
+#     .rename(columns={"wind_speed": "mast_140m"})
+# )
+# # mast_140m = mast_140m_wsp.index.round('s')
+# # lidar_10min = lidar_10min.index.round('s')
+# mast_140m.index = mast_140m.index.round("10min") # because they have some milisecond error
+
+# common_idx = mast_140m_wsp.index.intersection(lidar_10min.index)
+# mast_align = mast_140m_wsp.loc[common_idx]
+# lidar_align = lidar_10min.loc[common_idx]
+
+# comparison = pd.concat(
+#     [lidar_align, mast_align],
+#     axis=1,
+# ).dropna()
 
 comparison = pd.concat(
-    [lidar_align, mast_align],
+    [lidar_10min, mast_140m],
     axis=1,
+    join="inner",
 ).dropna()
-
+comparison = comparison.rename(columns={"wind_speed": "wsp_mast_140m"})
 
 
 console.print(Markdown("## Matched 10-minute observations"))
@@ -418,7 +429,7 @@ fig.add_trace(
 fig.add_trace(
     go.Scatter(
         x=comparison.index,
-        y=comparison["mast_140m"],
+        y=comparison["wsp_mast_140m"],
         mode="markers",
         name="Met mast 140 m",
     )
@@ -432,3 +443,11 @@ fig.update_layout(
 )
 
 fig.show()
+
+
+
+
+#Step 3: Statistical question
+
+diff = comparison["lidar_139m"] - comparison["wsp_mast_140m"]
+plt.plot(comparison.index,diff)

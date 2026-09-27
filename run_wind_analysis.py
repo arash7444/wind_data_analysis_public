@@ -2,13 +2,16 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
 from wind_data_analysis.data_reader import (
     find_KNMI_LiDAR_files,
+    met_finder,
     read_KNMI_LiDAR,
+    read_met,
 )
 from wind_data_analysis.utils import lidar_height
 from wind_data_analysis.process import (
@@ -16,9 +19,110 @@ from wind_data_analysis.process import (
     wind_height_profile,
     compute_lidar_stats,
     calc_shear,
+    compare_lidar_to_metmast,
+    determine_comparison_period,
 )
 from wind_data_analysis.process.calc_turb import calc_ti
-from wind_data_analysis.plotting import plot_ti_polar_by_height, plot_wind_statistics
+from wind_data_analysis.plotting import (
+    plot_metmast_difference,
+    plot_metmast_metric_summary,
+    plot_metmast_scatter,
+    plot_metmast_time_series,
+    plot_ti_polar_by_height,
+    plot_wind_statistics,
+)
+
+
+def _load_lidar_data(data_folder, start_date=None, end_date=None):
+    """Load LiDAR files and calculate the statistics used by runner features.
+
+    Parameters
+    ----------
+    data_folder : str or pathlib.Path
+        LiDAR CSV file or folder.
+    start_date, end_date : datetime-like or None
+        Optional inclusive start and exclusive end for LiDAR observations.
+
+    Returns
+    -------
+    tuple
+        Concatenated statistics, heights, wind profile, and source file list.
+
+    Example
+    -------
+    ``_load_lidar_data("tests/lidar_data", "2020-06-07", "2020-06-08")``
+    loads one bundled day.
+    """
+
+    lidar_csv_files = find_KNMI_LiDAR_files(
+        Path(data_folder), start_date=start_date, end_date=end_date
+    )
+    if not lidar_csv_files:
+        raise ValueError("No LiDAR files found in the selected folder and date range.")
+    print("The following LiDAR files were found:")
+    for file_name in lidar_csv_files:
+        print(file_name)
+
+    per_file_stats = []
+    heights_all = []
+    for file_name in lidar_csv_files:
+        data_lidar = read_KNMI_LiDAR(file_name)
+        lidar_stats = compute_lidar_stats(data_lidar)
+        per_file_stats.append(lidar_stats)
+        heights_all.append(np.asarray(lidar_height(data_lidar), dtype=float))
+
+    frames = [
+        concatenate_wind_stats([getattr(item, attribute) for item in per_file_stats])
+        for attribute in ("avg", "max", "min", "std")
+    ]
+    if start_date is not None:
+        start = pd.Timestamp(start_date)
+        frames = [frame[frame.index >= start] for frame in frames]
+    if end_date is not None:
+        end = pd.Timestamp(end_date)
+        frames = [frame[frame.index < end] for frame in frames]
+    if frames[0].empty:
+        raise ValueError("No LiDAR observations remain inside the selected period.")
+    height_lidar_all = np.unique(np.concatenate(heights_all))
+    wsp_profiles = wind_height_profile(frames[0], height_lidar_all)
+    return (*frames, height_lidar_all, wsp_profiles, lidar_csv_files)
+
+
+def _load_metmast_data(data_folder, start_date=None, end_date=None):
+    """Load met-mast files and create unfiltered and selected tidy frames.
+
+    Parameters
+    ----------
+    data_folder : str or pathlib.Path
+        Met-mast NetCDF file or folder.
+    start_date, end_date : datetime-like or None
+        Optional inclusive start and exclusive end for met-mast observations.
+
+    Returns
+    -------
+    tuple
+        Unfiltered selected-file data, date-filtered data, and source file list.
+
+    Example
+    -------
+    ``_load_metmast_data("tests/metmast_data", "2020-06-07", "2020-06-08")``
+    returns the bundled one-day mast observations.
+    """
+
+    mast_files = met_finder(data_folder, start_date=start_date, end_date=end_date)
+    if not mast_files:
+        raise ValueError(
+            "No met-mast NetCDF files were found in the selected path and date range."
+        )
+    mast_all = pd.concat([read_met(path) for path in mast_files]).sort_index()
+    mast_selected = mast_all
+    if start_date is not None:
+        mast_selected = mast_selected[mast_selected.index >= pd.Timestamp(start_date)]
+    if end_date is not None:
+        mast_selected = mast_selected[mast_selected.index < pd.Timestamp(end_date)]
+    if mast_selected.empty:
+        raise ValueError("No met-mast observations remain inside the selected period.")
+    return mast_all, mast_selected.copy(), mast_files
 
 
 def run_program_from_input(input_file: str | Path):
@@ -41,9 +145,24 @@ def run_program_from_input(input_file: str | Path):
         input_data = json.load(f)
 
     # read general settings from input file
-    data_folder = input_data["data_folder"]
-    start_date = input_data.get("start_date", None)
-    end_date = input_data.get("end_date", None)
+    data_folder_lidar = input_data.get(
+        "data_folder_lidar", input_data.get("data_folder")
+    )
+    start_date_lidar = input_data.get(
+        "start_date_lidar", input_data.get("start_date")
+    )
+    end_date_lidar = input_data.get(
+        "end_date_lidar", input_data.get("end_date")
+    )
+    data_folder_metmast = input_data.get(
+        "data_folder_Metmast", input_data.get("metmast_data")
+    )
+    start_date_metmast = input_data.get(
+        "start_date_Metmast", input_data.get("start_date")
+    )
+    end_date_metmast = input_data.get(
+        "end_date_Metmast", input_data.get("end_date")
+    )
     features = input_data.get("features", [])
     hub_height = input_data.get("hub_height", 120.0)
     shear_window = input_data.get("shear_window", 6)
@@ -63,64 +182,151 @@ def run_program_from_input(input_file: str | Path):
     if isinstance(features, str):
         features = [features]
     features = [item.lower() for item in features]
-    unknown = set(features) - {"ti", "shear", "stats", "ti_polar"}
+    unknown = set(features) - {
+        "ti",
+        "shear",
+        "stats",
+        "ti_polar",
+        "metmast_data",
+        "metmast_comparison",
+    }
     if unknown:
         raise ValueError(f"Unknown features: {sorted(unknown)}")
 
+    lidar_features = {"ti", "shear", "stats", "ti_polar", "metmast_comparison"}
+    mast_features = {"metmast_data", "metmast_comparison"}
+    needs_lidar = bool(set(features) & lidar_features)
+    needs_mast = bool(set(features) & mast_features)
+
+    if needs_lidar:
+        if not data_folder_lidar:
+            raise ValueError(
+                "LiDAR features require 'data_folder_lidar' (legacy 'data_folder' is also accepted)."
+            )
+        (
+            lidar_avg_all,
+            lidar_max_all,
+            lidar_min_all,
+            lidar_std_all,
+            height_lidar_all,
+            wsp_profiles,
+            lidar_csv_files,
+        ) = _load_lidar_data(
+            data_folder_lidar,
+            start_date=start_date_lidar,
+            end_date=end_date_lidar,
+        )
+        print("\nAvailable LiDAR heights are:")
+        print(height_lidar_all)
+
+    if needs_mast:
+        if not data_folder_metmast:
+            raise ValueError(
+                "Met-mast features require 'data_folder_Metmast'."
+            )
+        mast_data_all, mast_data_selected, mast_files = _load_metmast_data(
+            data_folder_metmast,
+            start_date=start_date_metmast,
+            end_date=end_date_metmast,
+        )
+        print("The following met-mast files were found:")
+        for file_name in mast_files:
+            print(file_name)
+
+    if "metmast_data" in features:
+        metmast_csv_path = Path(save_dir) / "metmast_data.csv"
+        mast_export = mast_data_selected.reset_index()
+        mast_export.to_csv(metmast_csv_path, index=False)
+        mast_summary = (
+            mast_data_selected.groupby("height")["wind_speed"]
+            .agg(source_rows="size", valid_wind_speeds="count", mean_wind_speed="mean")
+            .reset_index()
+        )
+        print("\nMet-mast data summary:")
+        print("Period:", mast_data_selected.index.min(), "to", mast_data_selected.index.max())
+        print("Rows:", len(mast_data_selected))
+        print(mast_summary.to_string(index=False))
+        print("Tidy met-mast observations are saved in:", metmast_csv_path)
+
     # ------------------------------------------------------------------
-    # find lidar files
+    # feature : met-mast comparison
     # ------------------------------------------------------------------
-    lidar_csv_files = find_KNMI_LiDAR_files(
-        Path(data_folder),
-        start_date=start_date,
-        end_date=end_date,
-    )
+    if "metmast_comparison" in features:
+        timestamp_tolerance = pd.Timedelta(
+            seconds=input_data.get("timestamp_tolerance_seconds", 30.0)
+        )
+        comparison_start, comparison_end = determine_comparison_period(
+            lidar_avg_all.index,
+            mast_data_all.index,
+            start_date_lidar=start_date_lidar,
+            end_date_lidar=end_date_lidar,
+            start_date_mast=start_date_metmast,
+            end_date_mast=end_date_metmast,
+            timestamp_tolerance=timestamp_tolerance,
+        )
+        comparison = compare_lidar_to_metmast(
+            lidar_avg_all,
+            mast_data_all,
+            start_date=comparison_start,
+            end_date=comparison_end,
+            max_height_difference_m=input_data.get(
+                "max_height_difference_m", 2.0
+            ),
+            timestamp_tolerance=timestamp_tolerance,
+        )
 
-    if len(lidar_csv_files) == 0:
-        raise ValueError("No LiDAR files found in the selected folder and date range.")
+        matched_path = Path(save_dir) / "metmast_matched_data.csv"
+        metrics_path = Path(save_dir) / "metmast_metrics.csv"
+        pairs_path = Path(save_dir) / "metmast_height_pairs.csv"
+        comparison.matched_data.to_csv(matched_path, index=False)
+        comparison.metrics.to_csv(metrics_path, index=False)
+        comparison.pairing_report.to_csv(pairs_path, index=False)
 
-    print("The following files were found:")
-    for file_name in lidar_csv_files:
-        print(file_name)
+        figures = {
+            "metmast_timeseries.html": plot_metmast_time_series(comparison),
+            "metmast_scatter.html": plot_metmast_scatter(comparison),
+            "metmast_difference.html": plot_metmast_difference(comparison),
+            "metmast_summary.html": plot_metmast_metric_summary(comparison),
+        }
+        for filename, figure in figures.items():
+            output_path = Path(save_dir) / filename
+            figure.write_html(output_path)
+            if show_plot:
+                figure.show()
 
-    # ------------------------------------------------------------------
-    # read lidar files and calculate statistics file by file
-    # ------------------------------------------------------------------
-    per_file_stats = []
-    heights_all = []
-
-    for file_name in lidar_csv_files:
-        # read the LiDAR data
-        data_lidar = read_KNMI_LiDAR(file_name)
-
-        # compute the statistics for the LiDAR data
-        lidar_stats = compute_lidar_stats(data_lidar)
-
-        # extract the heights from the column names
-        heights = lidar_height(data_lidar)
-
-        # save the statistics and heights for each file in a list
-        per_file_stats.append(lidar_stats)
-        heights_all.append(np.asarray(heights, dtype=float))
-
-    # ------------------------------------------------------------------
-    # concatenate the statistics from all files
-    # ------------------------------------------------------------------
-    lidar_avg_all = concatenate_wind_stats([item.avg for item in per_file_stats])
-    lidar_max_all = concatenate_wind_stats([item.max for item in per_file_stats])
-    lidar_min_all = concatenate_wind_stats([item.min for item in per_file_stats])
-    lidar_std_all = concatenate_wind_stats([item.std for item in per_file_stats])
-
-    # extract the unique heights from all files and sort them
-    height_lidar_all = np.unique(np.concatenate(heights_all))
-
-    print("\nAvailable LiDAR heights are:")
-    print(height_lidar_all)
-
-    # ------------------------------------------------------------------
-    # make wind speed profile once
-    # ------------------------------------------------------------------
-    wsp_profiles = wind_height_profile(lidar_avg_all, height_lidar_all)
+        summary = comparison.metrics[
+            [
+                "lidar_height_m",
+                "mast_height_m",
+                "matched_observation_count",
+                "bias_lidar_minus_mast_m_s",
+                "mae_m_s",
+                "rmse_m_s",
+                "pearson_correlation",
+            ]
+        ].copy()
+        summary.insert(2, "period_start", str(comparison_start))
+        summary.insert(3, "period_end_exclusive", str(comparison_end))
+        print("\nLiDAR/met-mast comparison:")
+        print(summary.to_string(index=False))
+        print("\nDiscovered LiDAR heights [m]:", comparison.lidar_heights_m)
+        print("Discovered met-mast heights [m]:", comparison.mast_heights_m)
+        print("Unmatched LiDAR heights [m]:", comparison.unmatched_lidar_heights_m)
+        print("Unmatched met-mast heights [m]:", comparison.unmatched_mast_heights_m)
+        failed_pairs = comparison.pairing_report[
+            comparison.pairing_report["status"].ne("matched")
+        ]
+        if not failed_pairs.empty:
+            print("Pairs that could not be aligned:")
+            print(
+                failed_pairs[
+                    ["lidar_height_m", "mast_height_m", "message"]
+                ].to_string(index=False)
+            )
+        print(
+            "Comparison outputs are saved in:",
+            Path(save_dir),
+        )
 
     # ------------------------------------------------------------------
     # feature : TI

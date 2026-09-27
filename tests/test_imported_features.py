@@ -84,7 +84,14 @@ def test_runner_with_sample_data(tmp_path, monkeypatch, folder):
     runner = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(runner)
     config = json.loads((root / "input_files/input_config_extended.json").read_text())
-    config.update(data_folder=str(root / "tests" / folder), save_dir=str(tmp_path))
+    if folder == "lidar_data_10min":
+        config["data_folder"] = str(root / "tests" / folder)
+        config["start_date"] = config.pop("start_date_lidar")
+        config["end_date"] = config.pop("end_date_lidar")
+        config.pop("data_folder_lidar")
+    else:
+        config["data_folder_lidar"] = str(root / "tests" / folder)
+    config["save_dir"] = str(tmp_path)
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config))
     captured = {}

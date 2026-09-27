@@ -1,6 +1,6 @@
 # Runnable examples
 
-These examples exercise the capabilities available on the current `dev` branch. They use the real package functions and the small KNMI sample files under `tests/`. Machine-learning work is intentionally excluded because it exists only on the separate `ML` branch.
+These examples exercise the current public package capabilities. They use the real package functions and the small KNMI sample files under `tests/`. Machine-learning work is intentionally outside this repository's supported workflow.
 
 All commands below assume the current directory is the repository root. Generated files are written below `outputs/examples/`, which is ignored by Git.
 
@@ -32,7 +32,7 @@ Run these commands from the repository root. `uv sync` installs the project itse
 uv run python examples/demo_data_loading.py
 ```
 
-Uses one raw LiDAR CSV and one included KNMI met-mast NetCDF file. It demonstrates file discovery, timestamp parsing, height discovery, missing-value inspection, the currently standalone wind-speed cleaner, and the experimental met-mast reader.
+Uses one raw LiDAR CSV and one included KNMI met-mast NetCDF file. It demonstrates file discovery, timestamp parsing, height discovery, missing-value inspection, the currently standalone wind-speed cleaner, and the met-mast reader used by the comparison workflow.
 
 Expected output:
 
@@ -51,6 +51,17 @@ uv run python examples/demo_statistics_and_profiles.py
 Uses both bundled LiDAR formats: raw/high-frequency data and pre-averaged 10-minute data. It shows how `compute_lidar_stats` dispatches between them and how average wind speed is reshaped into time-by-height profiles.
 
 Expected output: raw and 10-minute CSV previews under `outputs/examples/statistics_profiles/`.
+
+### LiDAR and met-mast comparison
+
+```bash
+uv run python examples/demo_metmast_comparison.py
+```
+
+Uses the bundled 7 June 2020 measurements and the shared production functions
+to discover nearby one-to-one height pairs, validate the 10-minute timestamps,
+calculate metrics, and write tidy CSV and interactive HTML outputs under
+`outputs/examples/metmast/`.
 
 ### Turbulence intensity and shear
 
@@ -78,7 +89,7 @@ Expected output: interactive HTML files under `outputs/examples/visualization/`.
 uv run python examples/demo_complete_workflow.py
 ```
 
-Runs the main reusable workflow: file discovery, reading, validation, statistics, height profiles, TI, shear, tabular exports, and Plotly visualization. It does not run ML because ML is not present on the current branch.
+Runs the main reusable workflow: file discovery, reading, validation, statistics, height profiles, TI, shear, tabular exports, and Plotly visualization. Machine learning is outside the supported workflow.
 
 Expected output under `outputs/examples/complete_workflow/`:
 
@@ -92,10 +103,14 @@ The examples complement rather than replace the existing applications:
 
 ```bash
 uv run python run_wind_analysis.py input_files/input_config_extended.json
+uv run python run_wind_analysis.py input_files/input_config_metmast_data.json
+uv run python run_wind_analysis.py input_files/input_config_metmast_comparison.json
 uv run streamlit run simple_gui.py
 ```
 
-The first command writes the configured Plotly figures to `outputs/extended/`. The second starts the interactive Streamlit application and requires a browser session.
+The runner examples demonstrate LiDAR-only, met-mast-only, and combined inputs.
+The Streamlit command starts the interactive application and requires a browser
+session.
 
 ## Verification
 
