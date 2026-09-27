@@ -22,7 +22,10 @@ from wind_data_analysis.utils import NA_cols, lidar_height
 
 from demo_support import REPOSITORY_ROOT, make_output_directory
 
-
+from wind_data_analysis.process.wind_speed_validity import (
+    valid_wind_speed_mask,
+    validate_coverage_threshold,
+)
 def main() -> None:
     """Run the data-loading demonstration and save small CSV previews.
 
@@ -56,11 +59,14 @@ def main() -> None:
 
     speed_columns = [column for column in lidar_data if "Wind Speed" in column]
     cleaning_example = lidar_data[speed_columns[:2]].head(5).copy()
-    cleaning_example.iloc[0, 0] = -1
-    cleaning_example.iloc[1, 0] = 75
-    cleaned = clean_data(cleaning_example)
+    cleaning_example.iloc[0, 0] = -1 # injecting an invalid value
+    cleaning_example.iloc[1, 0] = 100 # injecting an invalid value
+    # cleaned = clean_data(cleaning_example) # this is old function and it detects and cleans the invalid values, then it returns the cleaned data
+    cleaned_mask = valid_wind_speed_mask(cleaning_example) # detecting the invalid values, it returns a boolean dataframe with True for valid values and False for invalid values
+    cleaned = cleaning_example.where(cleaned_mask) # cleaning the invalid values, it returns a dataframe with invalid values replaced by NaN
+    
     cleaned.to_csv(output_directory / "cleaned_lidar_preview.csv")
-    console.print("Injected -1 and 75 m/s values were converted to NaN:")
+    console.print("Injected -1 and 100 m/s values were converted to NaN:")
     console.print(cleaned.head(2).to_string())
 
     metmast_folder = REPOSITORY_ROOT / "tests" / "metmast_data"
