@@ -362,14 +362,23 @@ def test_bundled_day_discovers_six_pairs_with_144_matches_each():
     lidar = read_KNMI_LiDAR(
         Path("tests/lidar_data/ZephIR_Cabauw_ZP738_raw_20200607_v1.CSV")
     )
-    lidar_mean = compute_lidar_stats(lidar).avg
+    lidar_stats = compute_lidar_stats(lidar)
     mast = read_met(
         Path("tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc"),
         "2020-06-07",
         "2020-06-08",
     )
     result = compare_lidar_to_metmast(
-        lidar_mean, mast, "2020-06-07", "2020-06-08", 2.0
+        lidar_stats.avg,
+        mast,
+        "2020-06-07",
+        "2020-06-08",
+        2.0,
+        lidar_raw_sample_coverage=lidar_stats.raw_sample_coverage_percent,
+        lidar_raw_invalid_sample_count=lidar_stats.raw_invalid_sample_count,
+        min_lidar_raw_coverage_percent=(
+            lidar_stats.min_lidar_raw_coverage_percent
+        ),
     )
     actual_pairs = list(
         result.metrics[["lidar_height_m", "mast_height_m"]].itertuples(
@@ -385,6 +394,11 @@ def test_bundled_day_discovers_six_pairs_with_144_matches_each():
         (199.0, 200.0),
     ]
     assert result.metrics["matched_observation_count"].tolist() == [144] * 6
+    assert result.metrics["availability_percent"].tolist() == [100.0] * 6
+    assert result.metrics["lidar_below_minimum_coverage_bin_count"].tolist() == [
+        0
+    ] * 6
+    assert result.metrics["lidar_min_raw_sample_coverage_percent"].min() >= 80.0
 
 
 def test_runner_writes_complete_metmast_comparison_outputs(tmp_path, monkeypatch):
@@ -456,6 +470,7 @@ def test_runner_writes_complete_metmast_comparison_outputs(tmp_path, monkeypatch
         "end_date_Metmast": "2020-06-08",
         "features": ["metmast_comparison"],
         "max_height_difference_m": 2.0,
+        "min_lidar_raw_coverage_percent": 80.0,
         "show_plot": False,
         "save_dir": str(tmp_path / "outputs"),
     }
@@ -476,7 +491,13 @@ def test_runner_writes_complete_metmast_comparison_outputs(tmp_path, monkeypatch
     assert expected_files <= {path.name for path in output.iterdir()}
     metrics = pd.read_csv(output / "metmast_metrics.csv")
     assert metrics["matched_observation_count"].tolist() == [144] * 6
-    assert len(pd.read_csv(output / "metmast_matched_data.csv")) == 6 * 144
+    assert metrics["availability_percent"].tolist() == [100.0] * 6
+    matched = pd.read_csv(output / "metmast_matched_data.csv")
+    assert len(matched) == 6 * 144
+    assert {
+        "lidar_raw_sample_coverage_percent",
+        "lidar_raw_invalid_sample_count",
+    } <= set(matched.columns)
 
 
 def test_comparison_period_uses_instrument_range_overlap():

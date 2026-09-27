@@ -43,13 +43,14 @@ def main() -> None:
     ti_values = calc_ti(average, standard_deviation, hub_height=139.0)
     shear_values = calc_shear(profiles, window=6)
 
-    statistics_figure, statistics_height = plot_wind_statistics(
+    statistics_figure_subplot, statistics_figure, statistics_height = plot_wind_statistics(
         average,
         results["maximum"],
         results["minimum"],
         standard_deviation,
         height=139.0,
     )
+    statistics_figure_subplot.write_html(output_directory / "wind_statistics_subplot.html")
     statistics_figure.write_html(output_directory / "wind_statistics.html")
     plot_ti_polar_by_height(
         ti_values.ti_raw, heights=[19.0, 59.0, 139.0, 199.0]

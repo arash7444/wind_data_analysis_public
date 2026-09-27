@@ -2,6 +2,7 @@
   "data_folder_lidar": "tests/lidar_data",
   "start_date_lidar": "2020-06-07",
   "end_date_lidar": "2020-06-08",
+  "min_lidar_raw_coverage_percent": 80.0,
   "data_folder_Metmast": "tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc",
   "start_date_Metmast": "2020-06-07",
   "end_date_Metmast": "2020-06-08",

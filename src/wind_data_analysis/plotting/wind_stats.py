@@ -40,4 +40,14 @@ def plot_wind_statistics(
         fig.update_yaxes(title_text=f"{label} [m/s]", row=row, col=1)
     fig.update_xaxes(title_text="Time", row=4, col=1)
     fig.update_layout(title=f"LiDAR wind statistics at {selected:g} m", height=950)
-    return fig, selected
+
+
+    fig2 = go.Figure()
+    for row, (label, frame) in enumerate(zip(labels, frames), start=1):
+        fig2.add_trace(go.Scatter(x=frame.index, y=frame[columns[selected]],
+                                 mode="lines", name=label))
+        # fig.update_yaxes(title_text=f"{label} [m/s]", row=row, col=1)
+    # fig.update_xaxes(title_text="Time", row=4, col=1)
+    fig2.update_layout(title=f"LiDAR wind statistics at {selected:g} m", height=950)
+    fig2.show()
+    return fig, fig2, selected

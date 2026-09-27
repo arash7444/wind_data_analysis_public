@@ -450,4 +450,5 @@ fig.show()
 #Step 3: Statistical question
 
 diff = comparison["lidar_139m"] - comparison["wsp_mast_140m"]
+diff.describe()
 plt.plot(comparison.index,diff)

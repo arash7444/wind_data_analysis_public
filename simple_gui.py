@@ -37,6 +37,7 @@ def load_and_process_lidar_data(
     data_folder: str | Path,
     start_date=None,
     end_date=None,
+    min_lidar_raw_coverage_percent: float = 80.0,
 ):
     """
     This function finds LiDAR files, reads them, calculates statistics
@@ -50,6 +51,8 @@ def load_and_process_lidar_data(
         Start date in YYYY-MM-DD format.
     end_date : str or None
         End date in YYYY-MM-DD format.
+    min_lidar_raw_coverage_percent : float, default 80.0
+        Minimum valid raw-sample coverage for a ten-minute LiDAR bin.
 
     Returns
     -------
@@ -67,6 +70,15 @@ def load_and_process_lidar_data(
         Wind speed profiles where each row is one timestamp and columns are heights.
     lidar_csv_files : list
         List of LiDAR files found in the selected folder and date range.
+    lidar_raw_coverage_all : pandas.DataFrame or None
+        Per-bin valid raw-sample percentages when raw files are loaded.
+    lidar_raw_invalid_all : pandas.DataFrame or None
+        Per-bin rejected raw-sample counts when raw files are loaded.
+
+    Example
+    -------
+    ``load_and_process_lidar_data("tests/lidar_data", min_lidar_raw_coverage_percent=80)``
+    loads the bundled LiDAR data using the default coverage threshold.
     """
 
     # ------------------------------------------------------------------
@@ -94,7 +106,10 @@ def load_and_process_lidar_data(
         data_lidar = read_KNMI_LiDAR(file_name)
 
         # calculate statistics for this file
-        lidar_stats = compute_lidar_stats(data_lidar)
+        lidar_stats = compute_lidar_stats(
+            data_lidar,
+            min_lidar_raw_coverage_percent=min_lidar_raw_coverage_percent,
+        )
 
         # extract available heights from the column names
         heights = lidar_height(data_lidar)
@@ -110,6 +125,22 @@ def load_and_process_lidar_data(
     lidar_max_all = concatenate_wind_stats([item.max for item in per_file_stats])
     lidar_min_all = concatenate_wind_stats([item.min for item in per_file_stats])
     lidar_std_all = concatenate_wind_stats([item.std for item in per_file_stats])
+    coverage_items = [
+        item.raw_sample_coverage_percent
+        for item in per_file_stats
+        if item.raw_sample_coverage_percent is not None
+    ]
+    invalid_raw_items = [
+        item.raw_invalid_sample_count
+        for item in per_file_stats
+        if item.raw_invalid_sample_count is not None
+    ]
+    lidar_raw_coverage_all = (
+        concatenate_wind_stats(coverage_items) if coverage_items else None
+    )
+    lidar_raw_invalid_all = (
+        concatenate_wind_stats(invalid_raw_items) if invalid_raw_items else None
+    )
 
     if start_date is not None:
         start = pd.Timestamp(start_date)
@@ -117,12 +148,26 @@ def load_and_process_lidar_data(
         lidar_max_all = lidar_max_all[lidar_max_all.index >= start]
         lidar_min_all = lidar_min_all[lidar_min_all.index >= start]
         lidar_std_all = lidar_std_all[lidar_std_all.index >= start]
+        if lidar_raw_coverage_all is not None:
+            lidar_raw_coverage_all = lidar_raw_coverage_all[
+                lidar_raw_coverage_all.index >= start
+            ]
+            lidar_raw_invalid_all = lidar_raw_invalid_all[
+                lidar_raw_invalid_all.index >= start
+            ]
     if end_date is not None:
         end = pd.Timestamp(end_date)
         lidar_avg_all = lidar_avg_all[lidar_avg_all.index < end]
         lidar_max_all = lidar_max_all[lidar_max_all.index < end]
         lidar_min_all = lidar_min_all[lidar_min_all.index < end]
         lidar_std_all = lidar_std_all[lidar_std_all.index < end]
+        if lidar_raw_coverage_all is not None:
+            lidar_raw_coverage_all = lidar_raw_coverage_all[
+                lidar_raw_coverage_all.index < end
+            ]
+            lidar_raw_invalid_all = lidar_raw_invalid_all[
+                lidar_raw_invalid_all.index < end
+            ]
     if lidar_avg_all.empty:
         raise ValueError("No LiDAR observations remain inside the selected period.")
 
@@ -140,6 +185,8 @@ def load_and_process_lidar_data(
         height_lidar_all,
         wsp_profiles,
         lidar_csv_files,
+        lidar_raw_coverage_all,
+        lidar_raw_invalid_all,
     )
 
 
@@ -567,6 +614,7 @@ def main():
         data_folder_lidar = ""
         start_date_lidar = None
         end_date_lidar = None
+        min_lidar_raw_coverage_percent = 80.0
         if needs_lidar:
             st.subheader("LiDAR input")
             data_folder_lidar = st.text_input(
@@ -581,6 +629,13 @@ def main():
             )
             start_date_lidar = start_date_lidar_text.strip() or None
             end_date_lidar = end_date_lidar_text.strip() or None
+            min_lidar_raw_coverage_percent = st.number_input(
+                "Minimum raw LiDAR coverage [%]",
+                min_value=0.0,
+                max_value=100.0,
+                value=80.0,
+                step=1.0,
+            )
 
         data_folder_metmast = ""
         start_date_metmast = None
@@ -663,10 +718,15 @@ def main():
                         height_lidar_all,
                         wsp_profiles,
                         lidar_csv_files,
+                        lidar_raw_coverage_all,
+                        lidar_raw_invalid_all,
                     ) = load_and_process_lidar_data(
                         data_folder=data_folder_lidar,
                         start_date=start_date_lidar,
                         end_date=end_date_lidar,
+                        min_lidar_raw_coverage_percent=(
+                            min_lidar_raw_coverage_percent
+                        ),
                     )
                 with st.expander("Found LiDAR files", expanded=False):
                     for file_name in lidar_csv_files:
@@ -749,6 +809,11 @@ def main():
                         end_date=comparison_end,
                         max_height_difference_m=max_height_difference_m,
                         timestamp_tolerance="30s",
+                        lidar_raw_sample_coverage=lidar_raw_coverage_all,
+                        lidar_raw_invalid_sample_count=lidar_raw_invalid_all,
+                        min_lidar_raw_coverage_percent=(
+                            min_lidar_raw_coverage_percent
+                        ),
                     )
 
                 st.header("LiDAR and met-mast wind-speed comparison")
@@ -784,8 +849,11 @@ def main():
                     )
                 st.subheader("Per-height comparison metrics")
                 st.caption(
-                    "Bias and differences are LiDAR − met mast. Availability uses "
-                    "the expected 10-minute periods in the selected interval."
+                    "Bias and differences are LiDAR − met mast. "
+                    "availability_percent is paired-bin availability: valid paired "
+                    "10-minute bins divided by expected bins. Raw LiDAR coverage "
+                    f"is separate; the configured minimum is "
+                    f"{min_lidar_raw_coverage_percent:g}%."
                 )
                 st.dataframe(comparison.metrics, use_container_width=True)
                 st.plotly_chart(

@@ -120,4 +120,6 @@ Run the automated suite with:
 uv run --locked pytest
 ```
 
-One test in `tests/test_known_limitations.py` is deliberately marked `xfail`. It records the known negative-wind-speed TI issue without changing the current scientific behavior.
+`tests/test_known_limitations.py` now contains a passing regression for aligned
+TI mean-speed validation: mean speed must be finite, greater than zero, and at
+most 99 m/s.

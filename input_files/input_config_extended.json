@@ -2,6 +2,7 @@
   "data_folder_lidar": "tests/lidar_data",
   "start_date_lidar": "2020-05-01",
   "end_date_lidar": "2020-05-03",
+  "min_lidar_raw_coverage_percent": 80.0,
   "features": ["ti", "shear", "stats", "ti_polar"],
   "hub_height": 139.0,
   "stats_height": 139.0,

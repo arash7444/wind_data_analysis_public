@@ -18,6 +18,7 @@ from wind_data_analysis.process import (
 )
 from wind_data_analysis.process.bin_wind import bin_wind
 from wind_data_analysis.process.bin_wdir import bin_wdir
+from wind_data_analysis.process.wind_speed_validity import valid_wind_speed_mask
 
 from dataclasses import dataclass
 
@@ -37,6 +38,26 @@ class TurbValues:
 
 
 def calc_ti(avg_val, std_val, hub_height=120.0) -> TurbValues:
+    """Calculate turbulence intensity using aligned valid mean wind speeds.
+
+    Parameters
+    ----------
+    avg_val : pandas.DataFrame
+        Mean wind speed and direction by height.
+    std_val : pandas.DataFrame
+        Wind-speed standard deviation by height.
+    hub_height : float, default 120.0
+        Preferred reference height for wind-speed binning.
+
+    Returns
+    -------
+    TurbValues
+        Raw, median, and binned median turbulence-intensity results.
+
+    Example
+    -------
+    ``calc_ti(lidar_stats.avg, lidar_stats.std, hub_height=120.0)`` computes TI.
+    """
 
     wind_cols = [
         cols for cols in avg_val.columns if "Horizontal Wind Speed (m/s) at" in cols
@@ -53,7 +74,8 @@ def calc_ti(avg_val, std_val, hub_height=120.0) -> TurbValues:
 
     lidar_wdir = pd.DataFrame(index=data_avg.index, columns=data_avg.columns)
 
-    lidar_ti = data_std.div(data_avg).where(data_avg != 0, np.nan)
+    valid_mean_speed = valid_wind_speed_mask(data_avg, allow_zero=False)
+    lidar_ti = data_std.div(data_avg).where(valid_mean_speed)
     lidar_wsp = data_avg[wind_cols].copy()
     lidar_wdir = avg_val[wdir_cols].copy()
 
@@ -65,12 +87,6 @@ def calc_ti(avg_val, std_val, hub_height=120.0) -> TurbValues:
 
     if lidar_ti.isna().any().any():
         print("Warning: Some TI values are NaN, check what is the reason")
-
-    # remove unrealistic/invalid values
-    lidar_ti = lidar_ti.mask(
-        (data_avg.reindex(columns=lidar_ti.columns) <= 0)
-        | (data_avg.reindex(columns=lidar_ti.columns) >= 999)
-    )
 
     # reset index to have Time as a column for melting
     lidar_ti = lidar_ti.reset_index()

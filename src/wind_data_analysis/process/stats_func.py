@@ -10,6 +10,11 @@ import os
 import seaborn as sns
 import warnings
 
+from wind_data_analysis.process.wind_speed_validity import (
+    valid_wind_speed_mask,
+    validate_coverage_threshold,
+)
+
 from wind_data_analysis.data_reader import (
     find_KNMI_LiDAR_files,
     read_KNMI_LiDAR,
@@ -27,16 +32,22 @@ from dataclasses import dataclass
 
 @dataclass
 class LidarStats:
-    """Container for LiDAR summary statistics."""
+    """Container for LiDAR summary statistics and raw-data diagnostics."""
 
     avg: pd.DataFrame
     max: pd.DataFrame
     min: pd.DataFrame
     std: pd.DataFrame
+    raw_sample_coverage_percent: pd.DataFrame | None = None
+    raw_invalid_sample_count: pd.DataFrame | None = None
+    raw_sampling_interval_seconds: float | None = None
+    expected_raw_samples_per_bin: int | None = None
+    min_lidar_raw_coverage_percent: float = 80.0
 
 
 def compute_lidar_stats(
     data: pd.DataFrame,
+    min_lidar_raw_coverage_percent: float = 80.0,
 ) -> LidarStats:
     """
     This function checks if the LiDAR data is high frequency or low frequency based on the presence of standard deviation columns.
@@ -47,6 +58,8 @@ def compute_lidar_stats(
     ----------
     data : pd.DataFrame
         DataFrame containing the data from LiDAR measurements.
+    min_lidar_raw_coverage_percent : float, default 80.0
+        Minimum valid raw-sample coverage required for high-frequency bins.
 
     Returns
     -------
@@ -63,9 +76,15 @@ def compute_lidar_stats(
     std: pd.DataFrame
             DataFrame containing the standard deviation of wind speed at each height and time.
 
+    Example
+    -------
+    ``compute_lidar_stats(data, min_lidar_raw_coverage_percent=80.0)``
+    computes ten-minute statistics using the default raw coverage rule.
+
     """
 
     lidar_data = data.copy()
+    threshold = validate_coverage_threshold(min_lidar_raw_coverage_percent)
 
     std_cols = [
         cols for cols in lidar_data.columns if "Horizontal Wind Speed Std." in cols
@@ -74,16 +93,17 @@ def compute_lidar_stats(
     if len(std_cols) == 0:
         print("Lidar data is High frequency because all std columns are missing \n")
 
-        LidarStats = compute_lidar_stats_highres(lidar_data)
+        LidarStats = compute_lidar_stats_highres(lidar_data, threshold)
         return LidarStats
     else:
         print(" Lidar data is Low frequency because std columns are present \n")
-        LidarStats = compute_lidar_stats_lowres(lidar_data)
+        LidarStats = compute_lidar_stats_lowres(lidar_data, threshold)
         return LidarStats
 
 
 def compute_lidar_stats_highres(
     data: pd.DataFrame,
+    min_lidar_raw_coverage_percent: float = 80.0,
 ) -> LidarStats:
     """
     Calculate basic statistics fo a LiDAR dataset, including mean, median, standard deviation
@@ -92,6 +112,8 @@ def compute_lidar_stats_highres(
     ----------
     data : pd.DataFrame
         DataFrame containing the data from LiDAR (high-resolution) measurements.
+    min_lidar_raw_coverage_percent : float, default 80.0
+        Minimum valid raw-sample coverage required for each ten-minute mean.
 
     returns
     -------
@@ -107,8 +129,26 @@ def compute_lidar_stats_highres(
             DataFrame containing the minimum wind speed and direction at each height and time.
     std: pd.DataFrame
             DataFrame containing the standard deviation of wind speed at each height and time.
+
+    Example
+    -------
+    ``compute_lidar_stats_highres(data, 80.0)`` masks bins below 80 percent.
     """
     lidar_data = data.copy()
+    threshold = validate_coverage_threshold(min_lidar_raw_coverage_percent)
+
+    if not isinstance(lidar_data.index, pd.DatetimeIndex):
+        raise ValueError("High-frequency LiDAR data must use a DatetimeIndex.")
+    positive_differences = (
+        lidar_data.index.to_series().sort_values().diff().dt.total_seconds()
+    )
+    positive_differences = positive_differences[positive_differences > 0]
+    if positive_differences.empty:
+        raise ValueError(
+            "At least two distinct LiDAR timestamps are required to infer sampling interval."
+        )
+    interval_seconds = float(positive_differences.median())
+    expected_samples = max(1, int(np.floor(600.0 / interval_seconds + 0.5)))
 
     # # Take only wind related data and covert them to numbers
     wind_cols = [
@@ -117,7 +157,19 @@ def compute_lidar_stats_highres(
         if "Wind Speed" in cols or "Wind Direction" in cols
     ]
 
-    lidar_numeric = lidar_data[wind_cols].copy()
+    lidar_numeric = lidar_data[wind_cols].apply(pd.to_numeric, errors="coerce")
+
+    speed_cols = [
+        column
+        for column in lidar_numeric.columns
+        if "Horizontal Wind Speed (m/s) at" in column
+    ]
+    raw_speed = lidar_numeric[speed_cols]
+    valid_speed = valid_wind_speed_mask(raw_speed)
+    valid_counts = valid_speed.resample("10min").sum().astype(int)
+    invalid_counts = (~valid_speed).resample("10min").sum().astype(int)
+    coverage = (100.0 * valid_counts / expected_samples).clip(upper=100.0)
+    lidar_numeric.loc[:, speed_cols] = raw_speed.where(valid_speed)
 
     # --- TODO: I need to clean up data more effectively.
     # lidar_numeric = clean_data(lidar_numeric)
@@ -133,6 +185,10 @@ def compute_lidar_stats_highres(
     lidar_min = lidar_numeric.resample("10min").min()
 
     lidar_std = lidar_numeric.resample("10min").std()
+
+    coverage_passes = coverage.ge(threshold)
+    for statistic in (lidar_avg, lidar_max, lidar_min, lidar_std):
+        statistic.loc[:, speed_cols] = statistic[speed_cols].where(coverage_passes)
 
     if lidar_std.isnull().any().any():
         warnings.warn(
@@ -150,10 +206,17 @@ def compute_lidar_stats_highres(
         max=lidar_max,
         min=lidar_min,
         std=lidar_std,
+        raw_sample_coverage_percent=coverage,
+        raw_invalid_sample_count=invalid_counts,
+        raw_sampling_interval_seconds=interval_seconds,
+        expected_raw_samples_per_bin=expected_samples,
+        min_lidar_raw_coverage_percent=threshold,
     )
 
 
-def compute_lidar_stats_lowres(data: pd.DataFrame) -> LidarStats:
+def compute_lidar_stats_lowres(
+    data: pd.DataFrame, min_lidar_raw_coverage_percent: float = 80.0
+) -> LidarStats:
     """
     Low resolution LiDAR data is already averaged over 10 minutes, so we only select the interesting columns and return them as the statistics.
 
@@ -161,6 +224,8 @@ def compute_lidar_stats_lowres(data: pd.DataFrame) -> LidarStats:
     ----------
     data : pd.DataFrame
         DataFrame containing the data from LiDAR (low-resolution) measurements.
+    min_lidar_raw_coverage_percent : float, default 80.0
+        Configured threshold retained for reporting; raw coverage is unavailable.
 
     Returns
     -------
@@ -168,9 +233,14 @@ def compute_lidar_stats_lowres(data: pd.DataFrame) -> LidarStats:
         Object containing average, maximum, minimum, and standard deviation
         dataframes
 
+    Example
+    -------
+    ``compute_lidar_stats_lowres(data)`` validates pre-averaged speed bins.
+
     """
 
     lidar_data = data.copy()
+    threshold = validate_coverage_threshold(min_lidar_raw_coverage_percent)
 
     ## Take only wind related data and save them in different dataframe for average, max, min, and std.
     #  Since the data is already averaged over 10 minutes.
@@ -192,6 +262,14 @@ def compute_lidar_stats_lowres(data: pd.DataFrame) -> LidarStats:
         if "Horizontal Wind Speed (m/s) at" in cols or "Wind Direction (deg) at" in cols
     ]
     lidar_avg = lidar_numeric[avg_cols].copy()
+    avg_speed_cols = [
+        column
+        for column in lidar_avg.columns
+        if "Horizontal Wind Speed (m/s) at" in column
+    ]
+    lidar_avg.loc[:, avg_speed_cols] = lidar_avg[avg_speed_cols].where(
+        valid_wind_speed_mask(lidar_avg[avg_speed_cols])
+    )
 
     std_cols = [
         cols for cols in lidar_data.columns if "Horizontal Wind Speed Std." in cols
@@ -229,6 +307,7 @@ def compute_lidar_stats_lowres(data: pd.DataFrame) -> LidarStats:
         max=lidar_max,
         min=lidar_min,
         std=lidar_std,
+        min_lidar_raw_coverage_percent=threshold,
     )
 
 

@@ -7,6 +7,11 @@ import re
 import numpy as np
 import pandas as pd
 
+from wind_data_analysis.process.wind_speed_validity import (
+    valid_wind_speed_mask,
+    validate_coverage_threshold,
+)
+
 
 _LIDAR_WIND_SPEED_PATTERN = re.compile(
     r"^Horizontal Wind Speed \(m/s\) at\s*([-+]?\d+(?:\.\d+)?)m$"
@@ -21,7 +26,7 @@ class MetmastComparisonResult:
     Parameters
     ----------
     matched_data : pandas.DataFrame
-        Tidy, non-missing observations for all successful height pairs.
+        Tidy observations passing the shared validity rule for successful pairs.
     metrics : pandas.DataFrame
         One row of comparison metrics per successful height pair.
     pairing_report : pandas.DataFrame
@@ -509,7 +514,7 @@ def _comparison_metrics(
     Parameters
     ----------
     matched : pandas.DataFrame
-        Non-missing paired observations with the two wind-speed columns.
+        Valid paired observations with the two wind-speed columns.
     lidar_height_m : float
         Actual LiDAR measurement height.
     mast_height_m : float
@@ -568,6 +573,9 @@ def compare_lidar_to_metmast(
     end_date=None,
     max_height_difference_m: float = 2.0,
     timestamp_tolerance: str | pd.Timedelta = "30s",
+    lidar_raw_sample_coverage: pd.DataFrame | None = None,
+    lidar_raw_invalid_sample_count: pd.DataFrame | None = None,
+    min_lidar_raw_coverage_percent: float = 80.0,
 ) -> MetmastComparisonResult:
     """Align all optimal height pairs and compare 10-minute wind speeds.
 
@@ -585,6 +593,13 @@ def compare_lidar_to_metmast(
         Inclusive maximum height separation for one-to-one pairing.
     timestamp_tolerance : str or pandas.Timedelta, default "30s"
         Largest offset allowed before rounding to the 10-minute grid.
+    lidar_raw_sample_coverage : pandas.DataFrame or None
+        Optional per-bin valid raw-sample coverage from LiDAR processing.
+    lidar_raw_invalid_sample_count : pandas.DataFrame or None
+        Optional per-bin rejected raw LiDAR sample counts.
+    min_lidar_raw_coverage_percent : float, default 80.0
+        Applied raw LiDAR coverage threshold, reported separately from
+        paired-bin availability.
 
     Returns
     -------
@@ -601,6 +616,13 @@ def compare_lidar_to_metmast(
         raise ValueError("LiDAR mean data must use a DatetimeIndex.")
     if not isinstance(mast_data.index, pd.DatetimeIndex):
         raise ValueError("Met-mast data must use a DatetimeIndex.")
+    threshold = validate_coverage_threshold(min_lidar_raw_coverage_percent)
+    for name, frame in (
+        ("lidar_raw_sample_coverage", lidar_raw_sample_coverage),
+        ("lidar_raw_invalid_sample_count", lidar_raw_invalid_sample_count),
+    ):
+        if frame is not None and not isinstance(frame.index, pd.DatetimeIndex):
+            raise ValueError(f"{name} must use a DatetimeIndex.")
     tolerance = pd.Timedelta(timestamp_tolerance)
     if tolerance < pd.Timedelta(0):
         raise ValueError("Timestamp tolerance must be non-negative.")
@@ -641,7 +663,8 @@ def compare_lidar_to_metmast(
             "status": "failed",
             "message": "",
         }
-        lidar_series = lidar[_lidar_column_for_height(lidar, lidar_height)]
+        lidar_column = _lidar_column_for_height(lidar, lidar_height)
+        lidar_series = lidar[lidar_column]
         mast_series = mast.loc[
             pd.to_numeric(mast["height"], errors="coerce").eq(mast_height),
             "wind_speed",
@@ -655,6 +678,32 @@ def compare_lidar_to_metmast(
                 "lidar_source_time",
                 tolerance,
             )
+            if lidar_raw_sample_coverage is not None:
+                coverage_series = lidar_raw_sample_coverage[
+                    _lidar_column_for_height(
+                        lidar_raw_sample_coverage, lidar_height
+                    )
+                ]
+                coverage_frame = _normalized_series_frame(
+                    coverage_series,
+                    "lidar_raw_sample_coverage_percent",
+                    "coverage_source_time",
+                    tolerance,
+                ).drop(columns="coverage_source_time")
+                lidar_frame = lidar_frame.join(coverage_frame, how="left")
+            if lidar_raw_invalid_sample_count is not None:
+                invalid_raw_series = lidar_raw_invalid_sample_count[
+                    _lidar_column_for_height(
+                        lidar_raw_invalid_sample_count, lidar_height
+                    )
+                ]
+                invalid_raw_frame = _normalized_series_frame(
+                    invalid_raw_series,
+                    "lidar_raw_invalid_sample_count",
+                    "invalid_raw_source_time",
+                    tolerance,
+                ).drop(columns="invalid_raw_source_time")
+                lidar_frame = lidar_frame.join(invalid_raw_frame, how="left")
             mast_frame = _normalized_series_frame(
                 mast_series,
                 "mast_wind_speed",
@@ -672,12 +721,48 @@ def compare_lidar_to_metmast(
             report["mast_source_observation_count"] = len(mast_frame)
             joined = lidar_frame.join(mast_frame, how="inner")
             report["shared_timestamp_count"] = len(joined)
-            matched = joined.dropna(
-                subset=["lidar_wind_speed", "mast_wind_speed"]
-            ).copy()
+            valid_lidar = valid_wind_speed_mask(joined["lidar_wind_speed"])
+            valid_mast = valid_wind_speed_mask(joined["mast_wind_speed"])
+            valid_pair = valid_lidar & valid_mast
+            invalid_lidar_count = int((~valid_lidar).sum())
+            invalid_mast_count = int((~valid_mast).sum())
+            invalid_pair_count = int((~valid_pair).sum())
+            report["invalid_lidar_bin_count"] = invalid_lidar_count
+            report["invalid_mast_bin_count"] = invalid_mast_count
+            report["invalid_paired_bin_count"] = invalid_pair_count
+            report["min_lidar_raw_coverage_percent"] = threshold
+            matched = joined.loc[valid_pair].copy()
             report["matched_observation_count"] = len(matched)
+
+            raw_invalid_total = np.nan
+            mean_raw_coverage = np.nan
+            minimum_raw_coverage = np.nan
+            below_coverage_count = np.nan
+            if "lidar_raw_invalid_sample_count" in lidar_frame:
+                raw_invalid_total = float(
+                    lidar_frame["lidar_raw_invalid_sample_count"].sum(min_count=1)
+                )
+            if "lidar_raw_sample_coverage_percent" in lidar_frame:
+                coverage_values = lidar_frame[
+                    "lidar_raw_sample_coverage_percent"
+                ].dropna()
+                if not coverage_values.empty:
+                    mean_raw_coverage = float(coverage_values.mean())
+                    minimum_raw_coverage = float(coverage_values.min())
+                    below_coverage_count = int((coverage_values < threshold).sum())
+            diagnostics = {
+                "invalid_lidar_bin_count": invalid_lidar_count,
+                "invalid_mast_bin_count": invalid_mast_count,
+                "invalid_paired_bin_count": invalid_pair_count,
+                "lidar_raw_invalid_sample_count": raw_invalid_total,
+                "lidar_mean_raw_sample_coverage_percent": mean_raw_coverage,
+                "lidar_min_raw_sample_coverage_percent": minimum_raw_coverage,
+                "lidar_below_minimum_coverage_bin_count": below_coverage_count,
+                "min_lidar_raw_coverage_percent": threshold,
+            }
+            report.update(diagnostics)
             if matched.empty:
-                report["message"] = "No matched non-missing observations."
+                report["message"] = "No matched valid wind-speed observations."
                 report_records.append(report)
                 continue
             expected_count = _expected_period_count(
@@ -691,8 +776,7 @@ def compare_lidar_to_metmast(
                 matched["lidar_wind_speed"] - matched["mast_wind_speed"]
             )
             matched_parts.append(matched)
-            metric_records.append(
-                _comparison_metrics(
+            metrics = _comparison_metrics(
                     matched,
                     lidar_height,
                     mast_height,
@@ -701,7 +785,8 @@ def compare_lidar_to_metmast(
                     len(mast_frame),
                     len(joined),
                 )
-            )
+            metrics.update(diagnostics)
+            metric_records.append(metrics)
             report["status"] = "matched"
             report["message"] = ""
         except ValueError as error:

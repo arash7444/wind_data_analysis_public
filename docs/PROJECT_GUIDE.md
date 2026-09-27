@@ -194,34 +194,47 @@ Responsibility: experimental monthly NetCDF discovery and tidy conversion.
 
 ### `process/stats_func.py`
 
-Defines `LidarStats`, a dataclass with four DataFrames: `avg`, `max`, `min`, and `std`.
+Defines `LidarStats`, a dataclass with `avg`, `max`, `min`, and `std` DataFrames
+plus optional raw-sample coverage, invalid-sample counts, inferred interval,
+expected samples per bin, and the applied coverage threshold.
 
-#### `compute_lidar_stats(data) -> LidarStats`
+#### `compute_lidar_stats(data, min_lidar_raw_coverage_percent=80.0) -> LidarStats`
 
 - Responsibility: dispatch to high- or low-resolution processing based on whether any column contains `Horizontal Wind Speed Std.`.
 - Called by: applications, tests, examples, and module demonstrations.
 - Side effects: prints the detected input type.
 - Limitation: format detection depends on one exact column-name fragment rather than explicit metadata/schema validation.
-- Example: `stats = compute_lidar_stats(read_KNMI_LiDAR(path))`.
+- Validity rule: horizontal wind speed must be numeric, finite, and within
+  0--99 m/s inclusive.
+- Example: `stats = compute_lidar_stats(read_KNMI_LiDAR(path), 80.0)`.
 
 #### `compute_lidar_stats_highres(data) -> LidarStats`
 
 - Parameters: time-indexed raw LiDAR DataFrame.
-- Returns: 10-minute mean/max/min/std of columns containing `Wind Speed` or `Wind Direction`, plus a derived `Time_seconds` column in every output.
+- Returns: 10-minute mean/max/min/std plus raw-speed diagnostics. Invalid
+  speeds are masked before resampling. The per-file interval is the median
+  positive timestamp difference; expected samples use round-half-up on
+  `600 / interval_seconds`; coverage equal to the threshold passes.
 - Called by: `compute_lidar_stats`.
 - Side effects: prints all output column indexes and can warn when resampled standard deviations contain missing values.
 - Assumptions: a valid `DatetimeIndex`; pandas numeric operations work for all selected wind columns.
-- Limitations: cleaning is explicitly disabled; arithmetic mean of circular wind direction is scientifically questionable near 0/360 degrees; maximum/minimum/std of direction and `Time_seconds` are not necessarily meaningful; sparse bins yield `NaN` standard deviation.
+- Limitations: arithmetic mean of circular wind direction is scientifically
+  questionable near 0/360 degrees; direction behavior is unchanged pending a
+  separate scientific policy. Maximum/minimum/std of direction and
+  `Time_seconds` are not necessarily meaningful.
 - Example: `compute_lidar_stats_highres(raw_data)`.
 
 #### `compute_lidar_stats_lowres(data) -> LidarStats`
 
 - Parameters: pre-averaged LiDAR DataFrame.
-- Returns: selected mean/direction columns and speed max/min/std columns renamed to the mean speed convention.
+- Returns: selected mean/direction columns and speed max/min/std columns
+  renamed to the mean speed convention. Pre-averaged mean-speed bins receive
+  the 0--99 finite check; raw coverage is unavailable.
 - Called by: `compute_lidar_stats`.
 - Side effects: assertion failure when max/min/std shapes differ.
 - Assumptions: exact KNMI column labels and matching statistic columns for every height.
-- Limitations: no timestamp resampling/validation or cleaning; directions occur only in `avg`; the shape assertion does not verify height-by-height label correspondence.
+- Limitations: no timestamp resampling; directions occur only in `avg`; the
+  shape assertion does not verify height-by-height label correspondence.
 - Example: `compute_lidar_stats_lowres(ten_minute_data)`.
 
 ### `process/concatenate_wind_stats.py`
@@ -278,12 +291,18 @@ Defines `TurbValues` with tidy `ti_raw`, median TI by height, and median TI by h
 #### `calc_ti(avg_val, std_val, hub_height=120.0) -> TurbValues`
 
 - Parameters: mean and standard-deviation DataFrames sharing a named `Time` index; desired reference height as a number.
-- Behavior: calculates `std / mean`, reshapes TI/speed/direction to tidy rows, selects the nearest measured reference height, adds reference wind speed, applies speed/direction bins, retains `ti < 1`, and aggregates medians.
+- Behavior: validates aligned mean-speed columns as finite, strictly positive,
+  and at most 99 m/s before calculating `std / mean`; then reshapes TI/speed/
+  direction to tidy rows, selects the nearest measured reference height, adds
+  reference wind speed, applies speed/direction bins, retains `ti < 1`, and
+  aggregates medians.
 - Called by: both applications, plotting tests indirectly through the runner, and examples.
 - Side effects: prints the selected reference height and a missing-TI warning.
 - Assumptions: matching horizontal-speed columns in average/std frames; matching direction columns; integer height labels; index name exactly `Time` for `melt(id_vars="Time")`.
 - Important meaning: `wsp_bin` is based on wind speed at the single selected reference height, while `wdir_bin` is based on direction at each row's own height.
-- Limitations: the validity mask currently reindexes mean-speed columns against renamed TI columns, so the intended non-positive/`>=999` mask does not align. Negative speed can therefore survive as negative TI; this is captured by an expected-failure test and not corrected here. Rows with `ti >= 1` are discarded without retaining a rejection reason. No minimum bin count is enforced.
+- Limitations: rows with `ti >= 1` are discarded without retaining a rejection
+  reason, and no minimum bin count is enforced. Wind-direction validity remains
+  outside this rule and requires a separate scientific policy.
 - Example: `ti = calc_ti(stats.avg, stats.std, hub_height=139)`.
 
 ### `process/calc_shear.py`
@@ -356,7 +375,7 @@ Defines `ShearValues` with raw alpha, standard error, rolling median, and rollin
 
 This is an application rather than reusable package code.
 
-- `load_and_process_lidar_data(data_folder, start_date=None, end_date=None)` duplicates the runner's load/statistics/profile path and returns seven objects. It raises when no file is found.
+- `load_and_process_lidar_data(data_folder, start_date=None, end_date=None, min_lidar_raw_coverage_percent=80.0)` duplicates the runner's load/statistics/profile path and returns the four statistics, heights, profiles, source files, raw coverage, and raw invalid counts. It raises when no file is found.
 - `plot_ti_main`, `plot_ti_timeseries_at_hub`, `plot_ti_mean_vs_height`, `plot_ti_vs_wsp`, and `plot_ti_wsp_and_ti_time_series` build GUI-specific TI figures.
 - `plot_shear_main`, `plot_shear_histogram`, `plot_shear_by_hour`, `plot_shear_alpha_vs_wsp`, and `plot_wind_profiles_selected_times` build GUI-specific shear figures.
 - `main()` creates Streamlit controls, runs selected features, and catches all exceptions for display.
@@ -403,18 +422,19 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 
 ## Known issues and effects
 
-1. **Negative-speed TI filtering does not align.** `calc_ti` renames TI columns before reindexing mean speeds against them, producing an all-missing mask. Negative mean speed can yield negative TI and remain because the final filter only removes `ti >= 1`. Effect: invalid negative observations can affect medians and plots. `tests/test_known_limitations.py` records the intended rejection as `xfail`. Proposed correction: construct the validity mask before renaming or align columns explicitly, then review whether zero, negative, and sentinel speeds should be dropped before division.
-2. **Direction averaging is linear.** Raw samples around 359° and 1° average near 180°, not north. Effect: 10-minute direction and direction-binned TI can be wrong near wraparound. Proposed correction: adopt a reviewed circular-mean convention and test it before changing results.
-3. **LiDAR filename dates are day-resolution.** Discovery supports independent start-only and end-only bounds, while the runner applies exact timestamp filtering after reading. Effect: custom filenames still need a parseable date for folder discovery.
-4. **Two-point shear uncertainty is undefined.** The residual degrees of freedom are zero. Effect: warnings and non-finite uncertainty, while alpha may still be returned. Decide whether at least three points should be required for uncertainty or whether alpha-with-missing-error is acceptable.
-5. **Negative shear is discarded.** Stable/inverted profiles can produce negative alpha, but the implementation converts it to missing. Effect: the shear distribution is biased if negative shear is meaningful for the intended engineering workflow. This needs a domain decision, not a silent code change.
-6. **No quality-control path is active.** Instrument flags and most sentinel/invalid values are not filtered. Effect: bad measurements can propagate into statistics, TI, shear, and plots.
-7. **Duplicate timestamps are retained across files.** Effect: overlapping files can double-count observations and create ambiguous index selection.
+1. **Direction averaging is linear.** Raw samples around 359° and 1° average near 180°, not north. Effect: 10-minute direction and direction-binned TI can be wrong near wraparound. Follow-up: define circular averaging, invalid/sentinel handling, direction coverage, and whether direction comparison is required before changing behavior.
+2. **LiDAR filename dates are day-resolution.** Discovery supports independent start-only and end-only bounds, while the runner applies exact timestamp filtering after reading. Effect: custom filenames still need a parseable date for folder discovery.
+3. **Two-point shear uncertainty is undefined.** The residual degrees of freedom are zero. Effect: warnings and non-finite uncertainty, while alpha may still be returned. Decide whether at least three points should be required for uncertainty or whether alpha-with-missing-error is acceptable.
+4. **Negative shear is discarded.** Stable/inverted profiles can produce negative alpha, but the implementation converts it to missing. Effect: the shear distribution is biased if negative shear is meaningful for the intended engineering workflow. This needs a domain decision, not a silent code change.
+5. **Instrument quality flags are not yet interpreted.** The approved numeric 0--99 m/s rule filters speeds, but instrument-specific flags need a separate reviewed policy.
+6. **Duplicate timestamps are retained across files.** Effect: overlapping files can double-count observations and create ambiguous index selection.
 
 ## Recommended next development steps
 
-1. Define and test the scientific quality-control policy: flags, sentinel values, valid speed/TI ranges, circular direction handling, and negative shear.
-2. Correct the TI validity-mask alignment after reviewing that policy, then turn the expected-failure test into a normal passing regression.
+1. Define and test the remaining scientific quality-control policy: instrument
+   flags, circular direction handling/coverage/comparison, and negative shear.
+2. Keep the shared wind-speed validity and TI alignment regression tests in the
+   locked suite as scientific acceptance criteria.
 3. Extract one reusable LiDAR workflow service returning a typed result, and make both runner and GUI call it.
 4. Add focused unit tests for every process function, especially raw/low-resolution equivalence, date-bound edge cases, circular direction, two-point shear, and duplicate timestamps.
 5. Add explicit configuration validation and consistent nearest-height selection/reporting across batch and GUI paths.

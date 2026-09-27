@@ -56,6 +56,15 @@ and then compute or extract:
 - min wind speed,
 - standard deviation.
 
+Horizontal wind speed is valid when it is numeric, finite, and between 0 and
+99 m/s inclusive. For raw LiDAR this rule is applied before 10-minute
+resampling. The sampling interval is inferred per file from the median positive
+timestamp difference, and expected samples per bin use round-half-up on
+`600 / interval_seconds`. Bins below the configurable raw-sample coverage
+threshold are marked missing; the default threshold is 80%, and equality
+passes. Pre-averaged LiDAR receives the same 0--99 m/s bin check, but raw
+coverage is unavailable.
+
 ### 3. Build wind profiles
 The tool can reorganize multi-height wind-speed measurements into profiles, where:
 
@@ -263,6 +272,7 @@ The flat JSON configuration is:
   "data_folder_lidar": "tests/lidar_data",
   "start_date_lidar": "2020-06-07",
   "end_date_lidar": "2020-06-08",
+  "min_lidar_raw_coverage_percent": 80.0,
   "data_folder_Metmast": "tests/metmast_data/cesar_tower_meteo_lb1_t10_v1.2_202006.nc",
   "start_date_Metmast": "2020-06-07",
   "end_date_Metmast": "2020-06-08",
@@ -281,6 +291,7 @@ selected feature uses that instrument, and every date bound may be omitted:
 |---|---|
 | `data_folder_lidar` | LiDAR CSV file or folder |
 | `start_date_lidar`, `end_date_lidar` | Optional inclusive start and exclusive end for LiDAR |
+| `min_lidar_raw_coverage_percent` | Minimum valid raw LiDAR sample coverage per 10-minute bin; finite 0--100, default `80.0` |
 | `data_folder_Metmast` | Met-mast NetCDF file or folder |
 | `start_date_Metmast`, `end_date_Metmast` | Optional inclusive start and exclusive end for met-mast data |
 
@@ -298,7 +309,11 @@ when they are within that tolerance. Larger offsets raise an error instead of
 being hidden. Indexes are sorted, and duplicate timestamps found after
 normalization are reported as errors. Alignment is an exact inner join on the
 validated grid; it is not a broad nearest-time merge or a full-interval shift.
-Missing wind speeds are removed independently for each height pair.
+Wind speeds outside the shared numeric, finite, inclusive 0--99 m/s validity
+rule are excluded independently for each height pair. The output reports
+invalid LiDAR bins, invalid mast bins, and the unique union of excluded paired
+bins. Negative values, sentinel values above 99, and non-finite values cannot
+enter comparison metrics.
 
 Metrics are calculated separately for every successful pair:
 
@@ -310,11 +325,20 @@ Metrics are calculated separately for every successful pair:
 | MAE | Mean absolute LiDAR/met-mast error, m/s |
 | RMSE | Root mean squared LiDAR/met-mast error, m/s |
 | Pearson correlation | Linear association, dimensionless; missing when data are insufficient or constant |
-| Availability | Matched non-missing count divided by scheduled 10-minute periods in the LiDAR/met-mast overlap, percent |
+| Paired-bin availability (`availability_percent`) | Valid paired 10-minute bins divided by scheduled 10-minute periods in the LiDAR/met-mast overlap, percent |
+| Raw LiDAR coverage | Valid raw samples divided by inferred expected samples per bin, percent; reported separately from paired-bin availability |
 
 The metrics and pairing report also include source counts, timestamps shared
-before missing-value removal, final matched count, and actual instrument heights.
+before validity filtering, final matched count, actual instrument heights,
+three invalid-bin counts, raw invalid LiDAR sample counts, mean/minimum raw
+coverage, and below-threshold bin counts. Matched CSV rows include raw coverage
+and raw-invalid counts when raw LiDAR metadata is available.
 Correlation describes association, not agreement.
+
+Wind-direction quality control and LiDAR--mast direction comparison remain a
+separate follow-up. That work requires an explicit policy for circular
+10-minute averaging near 0/360 degrees, sentinel handling, and direction
+coverage; this change does not alter wind direction or negative shear.
 
 The runner writes these files under `save_dir`:
 
