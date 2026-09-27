@@ -1,0 +1,26 @@
+{
+  "input_files": [
+    "D:\\Arash_repo\\wind_data_analysis_public\\tests\\lidar_data\\ZephIR_Cabauw_ZP738_raw_20200501_v1.CSV",
+    "D:\\Arash_repo\\wind_data_analysis_public\\tests\\lidar_data\\ZephIR_Cabauw_ZP738_raw_20200502_v1.CSV"
+  ],
+  "period_start": "2020-05-01 00:00:00",
+  "period_end": "2020-05-02 23:50:00",
+  "ten_minute_records": 288,
+  "measurement_heights_m": [
+    10.0,
+    19.0,
+    38.0,
+    59.0,
+    79.0,
+    99.0,
+    139.0,
+    179.0,
+    199.0,
+    251.0,
+    299.0
+  ],
+  "statistics_height_m": 139.0,
+  "valid_ti_values": 3168,
+  "valid_shear_values": 288,
+  "machine_learning": "Skipped: ML exists only on the separate ML branch."
+}

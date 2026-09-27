@@ -278,3 +278,4 @@ if __name__ == "__main__":
         marker="o",
         color="blue",
     )
+    plt.show()

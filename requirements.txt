@@ -9,3 +9,4 @@ xarray
 pytest 
 kaleido
 streamlit
+rich

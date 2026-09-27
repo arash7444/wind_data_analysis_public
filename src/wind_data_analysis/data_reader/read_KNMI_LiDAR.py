@@ -89,8 +89,8 @@ def read_KNMI_LiDAR(file_path: str | Path) -> pd.DataFrame:
 
     lidar_data = pd.read_csv(file_path, skiprows=1)
 
-    print(lidar_data.columns)
-    print(lidar_data.head())
+    # print(lidar_data.columns)
+    # print(lidar_data.head())
 
     lidar_data.columns = [
         col.strip() for col in lidar_data.columns
