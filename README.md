@@ -95,49 +95,40 @@ Main dependencies:
 - `numpy`, `pandas`, `scipy`, `xarray`
 - `matplotlib`, `seaborn`, `plotly`, `kaleido`
 - `streamlit`
-- `pytest` (for tests)
+- `pytest` (development only, for tests)
 
 
 
 ## Installation
 
-### 1. Create and activate a virtual environment
+### 1. Install uv
 
-Windows (PowerShell or CMD):
+Windows (PowerShell):
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-Windows (Anaconda Prompt):
+Linux or macOS:
 
 ```bash
-conda create -n wind_analysis python=3.10
-conda activate wind_analysis
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Linux:
+The project accepts any already-installed Python 3.10 or newer. `uv` creates and manages the project virtual environment automatically.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-### 2. Install dependencies and package
+### 2. Clone and synchronize the project
 
 ```bash
 git clone https://github.com/arash7444/wind_data_analysis_public.git
 cd wind_data_analysis_public
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
+uv sync --locked --dev
 ```
 
 ### 3. Test the installation
 
 ```bash
-pytest tests
+uv run --locked pytest tests
 ```
 
 ## Quick Start
@@ -145,7 +136,7 @@ pytest tests
 Use the JSON config in `input_files/input_config.json` and run:
 
 ```bash
-python run_wind_analysis.py
+uv run python run_wind_analysis.py
 ```
 
 This script reads `input_files/input_config.json` by default and writes plots to `outputs/`.
@@ -174,7 +165,7 @@ Example (`input_files/input_config.json`):
 ### Option A: Main runner (default config path)
 
 ```bash
-python run_wind_analysis.py
+uv run python run_wind_analysis.py
 ```
 
 Behavior:
@@ -188,7 +179,7 @@ Behavior:
 You can explore inputs interactively via Streamlit:
 
 ```bash
-streamlit run simple_gui.py
+uv run streamlit run simple_gui.py
 ```
 
 ## Polar plots and wind statistics
@@ -201,13 +192,13 @@ The runner and `simple_gui.py` now support two additional feature choices:
 Try all features with the bundled LiDAR data, from the repository root:
 
 ```bash
-python run_wind_analysis.py input_files/input_config_extended.json
+uv run python run_wind_analysis.py input_files/input_config_extended.json
 ```
 
 This saves interactive HTML plots in `outputs/extended/`, including
 `TI_polar_by_height.html` and `stats_139m.html`. Open them in a browser.
 The example uses `show_plot: false`, so no browser windows open automatically.
-Running `python run_wind_analysis.py` still uses the original configuration.
+Running `uv run python run_wind_analysis.py` still uses the original configuration.
 
 Add the feature names to your JSON `features` list and set these options:
 

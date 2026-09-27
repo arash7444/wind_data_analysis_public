@@ -75,9 +75,8 @@ The met-mast path is independent: `met_finder` selects monthly `.nc` files and `
 | `examples/` | Small runnable demonstrations added for learning and verification. |
 | `demo/` | Untracked exploratory study code that predated this guide; it is not part of the verified example suite. |
 | `docs/` | Documentation and screenshots. |
-| `.github/workflows/ci-pipeline.yml` | CI test definition for Python 3.10 on Windows and Ubuntu. |
-| `requirements.txt`, `pyproject.toml` | pip/setuptools dependencies and package metadata. |
-| `Wind_Analyzer_Private_Features.patch` | Historical patch artifact for features imported from another repository; not executed at runtime. |
+| `.github/workflows/ci-pipeline.yml` | uv-based CI test definition for Python 3.10–3.14 on Windows and Ubuntu. |
+| `pyproject.toml`, `uv.lock` | Project metadata, dependency declarations, and the reproducible uv lockfile. |
 
 There are no notebooks in the repository.
 
@@ -351,7 +350,7 @@ Defines `ShearValues` with raw alpha, standard error, rolling median, and rollin
 - Called by: its CLI block and runner regression tests.
 - Assumptions: execution starts from a directory where config-relative data/output paths resolve correctly.
 - Limitations: data-loading orchestration and many plots duplicate GUI code; no result object is returned; output files are overwritten; hub-height extras require an exact measurement height even though `calc_ti` itself chooses the nearest height; configuration is not schema-validated before output-directory creation.
-- Example: `python run_wind_analysis.py input_files/input_config_extended.json`.
+- Example: `uv run python run_wind_analysis.py input_files/input_config_extended.json`.
 
 ### `simple_gui.py`
 
@@ -362,7 +361,7 @@ This is an application rather than reusable package code.
 - `plot_shear_main`, `plot_shear_histogram`, `plot_shear_by_hour`, `plot_shear_alpha_vs_wsp`, and `plot_wind_profiles_selected_times` build GUI-specific shear figures.
 - `main()` creates Streamlit controls, runs selected features, and catches all exceptions for display.
 
-Parameters are the relevant process dataclasses/DataFrames plus numeric hub height; figure functions return a Plotly figure or `None` when an exact hub-height series is unavailable. Their primary caller is `main`; equivalent plotting logic also exists inline in the runner. Streamlit calls are the main side effect. Run with `streamlit run simple_gui.py`.
+Parameters are the relevant process dataclasses/DataFrames plus numeric hub height; figure functions return a Plotly figure or `None` when an exact hub-height series is unavailable. Their primary caller is `main`; equivalent plotting logic also exists inline in the runner. Streamlit calls are the main side effect. Run with `uv run streamlit run simple_gui.py`.
 
 Limitations include code duplication, broad exception handling that hides tracebacks from users, exact-height behavior that differs from TI's nearest-height reference selection, and no met-mast integration. Several short function docstrings omit full parameter/return contracts.
 
@@ -381,11 +380,11 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 
 ## Normal user workflow
 
-1. Create a Python 3.10+ environment and install `requirements.txt`, then install the project editable with `pip install -e .`.
+1. Install `uv`, ensure Python 3.10+ is available, and run `uv sync --locked --dev` from the repository root.
 2. Put compatible KNMI LiDAR CSV files in a folder, retaining dates in filenames.
 3. Copy and edit `input_files/input_config_extended.json` with a data folder, `[start_date, end_date)`, desired features, and a non-interactive `show_plot` choice.
-4. Run `python run_wind_analysis.py your_config.json`.
-5. Open the generated HTML files in `save_dir`, or use `streamlit run simple_gui.py` for interactive exploration.
+4. Run `uv run python run_wind_analysis.py your_config.json`.
+5. Open the generated HTML files in `save_dir`, or use `uv run streamlit run simple_gui.py` for interactive exploration.
 6. For programmatic work, call readers, statistics, TI/shear, and plotting functions separately as shown in `examples/`.
 7. Validate assumptions and quality flags before using results for engineering decisions; the package does not currently perform comprehensive measurement-quality control.
 
@@ -398,8 +397,8 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 - Several modules retain unused imports and long commented-out `__main__` prototypes.
 - `demo/study_analyze.py` is exploratory and not runnable end to end in its current form.
 - The historical patch is not runtime code and may become stale relative to the repository.
-- `requirements.txt` repeats `streamlit`; `pytest`, `kaleido`, and development/UI dependencies are all mixed into runtime dependencies.
-- The CI workflow's watched filename is `cicd-pipeline-lab.yml`, but the actual workflow is `ci-pipeline.yml`, so edits to the workflow file alone may not trigger CI.
+- Runtime dependencies are declared in `pyproject.toml`; `pytest` is isolated in the `dev` dependency group, and exact resolutions are committed in `uv.lock`.
+- CI uses the committed lockfile across Python 3.10–3.14 on both Windows and Ubuntu.
 - README says met-mast support was tested only synthetically, but real KNMI sample files are now present and the reader successfully handles them; engineering validation remains necessary.
 
 ## Known issues and effects

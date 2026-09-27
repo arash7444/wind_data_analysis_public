@@ -14,17 +14,22 @@ authors = [
 ]
 dependencies = [
     "numpy",
-	"plotly",
-	"seaborn",
+    "plotly",
+    "seaborn",
     "pandas",
     "matplotlib",
-	"streamlit",
-	"scipy",
-	"xarray",
-	"pytest",
-	"rich",
-	"kaleido",
+    "streamlit",
+    "scipy",
+    "xarray",
+    "rich",
+    "kaleido",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
