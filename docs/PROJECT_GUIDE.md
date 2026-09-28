@@ -73,7 +73,7 @@ For comparison, `met_finder` selects monthly `.nc` files and `read_met` creates 
 | `input_files/` | Example runner configurations. |
 | `tests/` | Pytest regression tests plus representative LiDAR and met-mast data. |
 | `examples/` | Small runnable demonstrations added for learning and verification. |
-| `demo/` | Untracked exploratory study code that predated this guide; it is not part of the verified example suite. |
+| `demo/` | Tracked exploratory study code that predates this guide; it is not part of the verified example suite. |
 | `docs/` | Documentation and screenshots. |
 | `.github/workflows/ci-pipeline.yml` | uv-based CI test definition for Python 3.10–3.14 on Windows and Ubuntu. |
 | `pyproject.toml`, `uv.lock` | Project metadata, dependency declarations, and the reproducible uv lockfile. |
@@ -132,7 +132,8 @@ Responsibility: locate and read KNMI LiDAR CSV files.
 
 ### `data_reader/read_KNMI_metmast.py`
 
-Responsibility: experimental monthly NetCDF discovery and tidy conversion.
+Responsibility: monthly NetCDF discovery and tidy conversion used by direct
+Python callers, the JSON runner, and the Streamlit app.
 
 #### `_date_bounds(start_date, end_date)`
 
@@ -147,7 +148,7 @@ Responsibility: experimental monthly NetCDF discovery and tidy conversion.
 - Parameters: a NetCDF path/folder and optional time bounds.
 - Returns: sorted string paths for matching `.nc` files.
 - Behavior: understands filename suffixes `_YYYYMM.nc` and selects months overlapping `[start, end)`; unrecognized names are retained for later time filtering.
-- Called by: tests, the data-loading example, and direct Python users.
+- Called by: the runner, Streamlit app, tests, examples, and direct Python users.
 - Side effects: recursive filesystem scan.
 - Limitations: selection uses filenames, not file metadata, and only lower-case `.nc` is found.
 - Example: `met_finder("tests/metmast_data", "2020-05-01", "2020-06-01")`.
@@ -157,10 +158,14 @@ Responsibility: experimental monthly NetCDF discovery and tidy conversion.
 - Parameters: NetCDF path and optional exact measurement bounds.
 - Returns: a time-indexed tidy DataFrame with `height`, `wind_speed`, `wind_speed_std`, `wind_direction`, and optional direction/weather columns.
 - Required variables: `z`, `F`, `SF`, `D`, and `time`; optional `SD`, `TA`, and `Q` are included when present.
-- Called by: tests, the data-loading example, and direct users.
+- Called by: the runner, Streamlit app, tests, examples, and direct users.
 - Side effects: opens and closes a NetCDF dataset.
 - Assumptions: xarray can decode the file and its variables follow the KNMI names.
-- Limitations: no unit conversion, quality filtering, interpolation, or runner/GUI integration. Some files need an optional xarray backend.
+- Limitations: the reader does not perform unit conversion, quality filtering,
+  or interpolation. Runner and GUI workflows integrate it for met-mast export
+  and LiDAR comparison; the comparison separately enforces the shared numeric,
+  finite, inclusive 0--99 m/s wind-speed rule. Some files need an optional
+  xarray backend.
 - Example: `read_met("mast_202005.nc", "2020-05-01", "2020-05-02")`.
 
 ### `utils/lidar_file_parsing.py`
@@ -422,7 +427,6 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 - Runner and GUI duplicate the complete load path and much Plotly construction.
 - Several modules retain unused imports and long commented-out `__main__` prototypes.
 - `demo/study_analyze.py` remains exploratory; supported runnable demonstrations live under `examples/`.
-- The historical patch is not runtime code and may become stale relative to the repository.
 - Runtime dependencies are declared in `pyproject.toml`; `pytest` is isolated in the `dev` dependency group, and exact resolutions are committed in `uv.lock`.
 - CI uses the committed lockfile across Python 3.10–3.14 on both Windows and Ubuntu.
 - The bundled real KNMI files exercise the met-mast comparison end to end; engineering validation and source quality review remain necessary.
