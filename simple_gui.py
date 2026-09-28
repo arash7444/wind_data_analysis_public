@@ -898,12 +898,13 @@ def main():
 
             if "stats" in features:
                 st.header("Wind statistics")
-                fig_stats, selected_height = plot_wind_statistics(
+                subplot_fig, single_fig, selected_height = plot_wind_statistics(
                     lidar_avg_all, lidar_max_all, lidar_min_all, lidar_std_all,
                     height=stats_height,
                 )
                 st.caption(f"Using measured height {selected_height:g} m (requested {stats_height:g} m).")
-                st.plotly_chart(fig_stats, use_container_width=True)
+                st.plotly_chart(subplot_fig, use_container_width=True)
+                st.plotly_chart(single_fig, use_container_width=True)
 
             if "ti" in features:
                 st.header("Turbulence Intensity (TI)")

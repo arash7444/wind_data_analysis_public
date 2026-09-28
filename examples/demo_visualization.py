@@ -5,6 +5,9 @@ from wind_data_analysis.process import calc_ti
 
 from demo_support import REPOSITORY_ROOT, load_lidar_statistics, make_output_directory
 
+SHOW_PLOTS = False
+SAVE_PLOTS = True
+
 
 def main() -> None:
     """Build wind-statistics and TI-polar figures and save them as HTML.
@@ -30,7 +33,7 @@ def main() -> None:
         "2020-05-03",
     )
 
-    statistics_figure, selected_height = plot_wind_statistics(
+    statistics_subplot, statistics_single, selected_height = plot_wind_statistics(
         results["average"],
         results["maximum"],
         results["minimum"],
@@ -45,13 +48,25 @@ def main() -> None:
     )
 
     statistics_path = output_directory / f"wind_statistics_{selected_height:g}m.html"
+    statistics_single_path = (
+        output_directory / f"wind_statistics_single_{selected_height:g}m.html"
+    )
     polar_path = output_directory / "ti_polar_by_height.html"
-    statistics_figure.write_html(statistics_path)
-    polar_figure.write_html(polar_path)
+    figures = {
+        statistics_path: statistics_subplot,
+        statistics_single_path: statistics_single,
+        polar_path: polar_figure,
+    }
+    for path, figure in figures.items():
+        if SAVE_PLOTS:
+            figure.write_html(path)
+        if SHOW_PLOTS:
+            figure.show()
 
     print(f"Statistics figure uses the nearest common height: {selected_height:g} m")
-    print(f"Saved: {statistics_path}")
-    print(f"Saved: {polar_path}")
+    if SAVE_PLOTS:
+        for path in figures:
+            print(f"Saved: {path}")
 
 
 if __name__ == "__main__":

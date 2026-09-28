@@ -10,7 +10,14 @@ from wind_data_analysis.plotting import (
     plot_metmast_time_series,
 )
 from wind_data_analysis.process import compare_lidar_to_metmast, compute_lidar_stats
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.traceback import install
+install()
+console = Console()
 
+SHOW_PLOTS = False
+SAVE_PLOTS = True
 
 def main() -> None:
     """Compare the bundled 7 June 2020 LiDAR and met-mast observations.
@@ -58,11 +65,15 @@ def main() -> None:
         "metmast_summary.html": plot_metmast_metric_summary(result),
     }
     for filename, figure in figures.items():
-        figure.write_html(output / filename)
+        if SAVE_PLOTS:
+            figure.write_html(output / filename)
+        if SHOW_PLOTS:
+            figure.show()
 
-    print(result.pairing_report.to_string(index=False))
-    print(result.metrics.to_string(index=False))
-    print(f"Outputs written to {output}")
+    # console.print(result.pairing_report.to_string(index=False))
+    # console.print(result.metrics.to_string(index=False))
+    if SAVE_PLOTS:
+        console.print(f"Outputs written to {output}")
 
 
 if __name__ == "__main__":

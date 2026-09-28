@@ -456,7 +456,7 @@ def test_runner_writes_complete_metmast_comparison_outputs(tmp_path, monkeypatch
     monkeypatch.setattr(
         go.Figure,
         "show",
-        lambda *args, **kwargs: pytest.fail("show_plot=False ignored"),
+        lambda *args, **kwargs: pytest.fail("show_plots=False ignored"),
     )
     config = {
         "data_folder_lidar": str(root / "tests/lidar_data"),
@@ -471,7 +471,8 @@ def test_runner_writes_complete_metmast_comparison_outputs(tmp_path, monkeypatch
         "features": ["metmast_comparison"],
         "max_height_difference_m": 2.0,
         "min_lidar_raw_coverage_percent": 80.0,
-        "show_plot": False,
+        "show_plots": False,
+        "save_plots": True,
         "save_dir": str(tmp_path / "outputs"),
     }
     config_path = tmp_path / "comparison.json"
@@ -572,7 +573,8 @@ def test_runner_supports_metmast_only_export(tmp_path, capsys):
         ),
         "features": ["metmast_data"],
         "save_dir": str(output),
-        "show_plot": False,
+        "show_plots": False,
+        "save_plots": True,
     }
     config_path = tmp_path / "metmast-only.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")

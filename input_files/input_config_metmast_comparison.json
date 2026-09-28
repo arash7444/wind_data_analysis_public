@@ -9,6 +9,7 @@
   "features": ["metmast_comparison"],
   "max_height_difference_m": 2.0,
   "timestamp_tolerance_seconds": 30.0,
-  "show_plot": false,
+  "show_plots": false,
+  "save_plots": true,
   "save_dir": "outputs/metmast_comparison"
 }

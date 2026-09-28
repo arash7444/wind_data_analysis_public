@@ -330,15 +330,17 @@ Defines `ShearValues` with raw alpha, standard error, rolling median, and rollin
 
 ### `plotting/wind_stats.py`
 
-#### `plot_wind_statistics(avg, maximum, minimum, std, height=120.0) -> tuple[go.Figure, float]`
+#### `plot_wind_statistics(avg, maximum, minimum, std, height=120.0) -> tuple[go.Figure, go.Figure, float]`
 
-- Responsibility: create four stacked Plotly time-series panels and select the nearest height common to all inputs.
+- Responsibility: create a four-row subplot and a single-panel overlaid Plotly
+  figure, then select the nearest height common to all inputs.
 - Parameters: four statistic DataFrames and requested finite height.
-- Returns: figure and selected height; does not display or save.
+- Returns: subplot figure, single-panel figure, and selected height; does not
+  display or save.
 - Called by: runner, GUI, tests, and examples.
 - Assumptions: exact normalized horizontal-speed column labels.
 - Limitations: tie-breaking chooses the lower sorted height; traces retain independent time indexes and are not explicitly aligned.
-- Example: `figure, used_height = plot_wind_statistics(avg, max_, min_, std, 120)`.
+- Example: `subplot, single, used_height = plot_wind_statistics(avg, max_, min_, std, 120)`.
 
 ### `plotting/ti_polar.py`
 
@@ -365,7 +367,10 @@ Defines `ShearValues` with raw alpha, standard error, rolling median, and rollin
 - Responsibility: complete batch application driven by JSON.
 - Instrument inputs use `data_folder_lidar` with optional `start_date_lidar`/`end_date_lidar`, and `data_folder_Metmast` with optional `start_date_Metmast`/`end_date_Metmast`. A folder is required only when a selected feature needs that instrument; legacy LiDAR keys remain accepted.
 - Supported features: `ti`, `shear`, `stats`, `ti_polar`, `metmast_data`, and `metmast_comparison`.
-- Outputs: creates `save_dir`, prints progress, writes multiple Plotly HTML files, and optionally opens figures with `show_plot`.
+- Outputs: creates `save_dir`, prints progress, writes Plotly HTML files only
+  when `save_plots` is enabled, and displays figures only when `show_plots` is
+  enabled. The flags are independent and both default to `true`; legacy
+  `show_plot` is accepted as a fallback.
 - Called by: its CLI block and runner regression tests.
 - Assumptions: execution starts from a directory where config-relative data/output paths resolve correctly.
 - Limitations: data-loading orchestration and many plots duplicate GUI code; no result object is returned; output files are overwritten; hub-height extras require an exact measurement height even though `calc_ti` itself chooses the nearest height; configuration is not schema-validated before output-directory creation.
@@ -401,7 +406,9 @@ The data-reader, process, plotting, and utility `__init__.py` files only re-expo
 
 1. Install `uv`, ensure Python 3.10+ is available, and run `uv sync --locked --dev` from the repository root.
 2. Put compatible KNMI LiDAR CSV files in a folder, retaining dates in filenames.
-3. Copy and edit an `input_files/` example with the applicable instrument folder, optional instrument-specific date bounds, desired features, and a non-interactive `show_plot` choice.
+3. Copy and edit an `input_files/` example with the applicable instrument
+   folder, optional instrument-specific date bounds, desired features, and
+   independent `show_plots`/`save_plots` choices.
 4. Run `uv run python run_wind_analysis.py your_config.json`.
 5. Open the generated HTML files in `save_dir`, or use `uv run streamlit run simple_gui.py` for interactive exploration.
 6. For programmatic work, call readers, statistics, TI/shear, and plotting functions separately as shown in `examples/`.

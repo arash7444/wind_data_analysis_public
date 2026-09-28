@@ -61,7 +61,8 @@ uv run python examples/demo_metmast_comparison.py
 Uses the bundled 7 June 2020 measurements and the shared production functions
 to discover nearby one-to-one height pairs, validate the 10-minute timestamps,
 calculate metrics, and write tidy CSV and interactive HTML outputs under
-`outputs/examples/metmast/`.
+`outputs/examples/metmast/`. Set the example's `SHOW_PLOTS` and `SAVE_PLOTS`
+constants independently to control display and HTML output.
 
 ### Turbulence intensity and shear
 
@@ -79,7 +80,9 @@ Expected output: TI and shear CSV files under `outputs/examples/turbulence_shear
 uv run python examples/demo_visualization.py
 ```
 
-Uses the bundled pre-averaged LiDAR sample. It creates a four-panel wind-statistics plot and multi-height TI polar plots without opening browser windows.
+Uses the bundled pre-averaged LiDAR sample. It creates subplot and single-panel
+wind-statistics figures plus multi-height TI polar plots. Set `SHOW_PLOTS` and
+`SAVE_PLOTS` independently; the defaults save HTML without opening windows.
 
 Expected output: interactive HTML files under `outputs/examples/visualization/`.
 
@@ -90,6 +93,8 @@ uv run python examples/demo_complete_workflow.py
 ```
 
 Runs the main reusable workflow: file discovery, reading, validation, statistics, height profiles, TI, shear, tabular exports, and Plotly visualization. Machine learning is outside the supported workflow.
+Its `SHOW_PLOTS` and `SAVE_PLOTS` constants independently control Plotly
+display and HTML saving; tabular outputs remain part of the workflow.
 
 Expected output under `outputs/examples/complete_workflow/`:
 

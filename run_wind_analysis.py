@@ -33,6 +33,47 @@ from wind_data_analysis.plotting import (
 )
 
 
+def _handle_plot(
+    figure: go.Figure,
+    output_path: str | Path,
+    *,
+    show_plots: bool,
+    save_plots: bool,
+    description: str,
+) -> None:
+    """Save and display one Plotly figure according to independent flags.
+
+    Parameters
+    ----------
+    figure : plotly.graph_objects.Figure
+        Figure to handle.
+    output_path : str or pathlib.Path
+        HTML destination used when ``save_plots`` is enabled.
+    show_plots : bool
+        Whether to display the figure interactively.
+    save_plots : bool
+        Whether to write the figure as HTML.
+    description : str
+        Human-readable figure name used in the saved-output message.
+
+    Returns
+    -------
+    None
+        The requested independent side effects are performed.
+
+    Example
+    -------
+    ``_handle_plot(fig, "plot.html", show_plots=False, save_plots=True, description="Plot")``
+    saves without displaying the figure.
+    """
+
+    if save_plots:
+        figure.write_html(output_path)
+        print(f"{description} is saved in: {output_path}")
+    if show_plots:
+        figure.show()
+
+
 def _load_lidar_data(
     data_folder,
     start_date=None,
@@ -213,7 +254,10 @@ def run_program_from_input(input_file: str | Path):
     features = input_data.get("features", [])
     hub_height = input_data.get("hub_height", 120.0)
     shear_window = input_data.get("shear_window", 6)
-    show_plot = input_data.get("show_plot", True)
+    show_plots = input_data.get(
+        "show_plots", input_data.get("show_plot", True)
+    )
+    save_plots = input_data.get("save_plots", True)
     save_dir = input_data.get("save_dir", "outputs")
     extra_plots = input_data.get("extra_plots", True)
     min_lidar_raw_coverage_percent = input_data.get(
@@ -346,9 +390,13 @@ def run_program_from_input(input_file: str | Path):
         }
         for filename, figure in figures.items():
             output_path = Path(save_dir) / filename
-            figure.write_html(output_path)
-            if show_plot:
-                figure.show()
+            _handle_plot(
+                figure,
+                output_path,
+                show_plots=show_plots,
+                save_plots=save_plots,
+                description=filename,
+            )
 
         summary = comparison.metrics[
             [
@@ -414,21 +462,33 @@ def run_program_from_input(input_file: str | Path):
             ncols=input_data.get("polar_ncols", 2),
         )
         html_name = Path(save_dir) / "TI_polar_by_height.html"
-        fig_polar.write_html(html_name)
-        print(f"TI polar plot is saved in: {html_name}")
-        if show_plot:
-            fig_polar.show()
+        _handle_plot(
+            fig_polar,
+            html_name,
+            show_plots=show_plots,
+            save_plots=save_plots,
+            description="TI polar plot",
+        )
 
     if "stats" in features:
-        fig_stats, selected_height = plot_wind_statistics(
+        subplot_fig, single_fig, selected_height = plot_wind_statistics(
             lidar_avg_all, lidar_max_all, lidar_min_all, lidar_std_all,
             height=input_data.get("stats_height", hub_height),
         )
-        html_name = Path(save_dir) / f"stats_{selected_height:g}m.html"
-        fig_stats.write_html(html_name)
-        print(f"Wind statistics at {selected_height:g} m are saved in: {html_name}")
-        if show_plot:
-            fig_stats.show()
+        _handle_plot(
+            subplot_fig,
+            Path(save_dir) / f"stats_{selected_height:g}m.html",
+            show_plots=show_plots,
+            save_plots=save_plots,
+            description=f"Wind-statistics subplot at {selected_height:g} m",
+        )
+        _handle_plot(
+            single_fig,
+            Path(save_dir) / f"stats_single_{selected_height:g}m.html",
+            show_plots=show_plots,
+            save_plots=save_plots,
+            description=f"Wind-statistics single-panel plot at {selected_height:g} m",
+        )
 
     if "ti" in features:
         # main TI boxplot
@@ -443,11 +503,13 @@ def run_program_from_input(input_file: str | Path):
         fig_ti.update_yaxes(title="TI [-]")
 
         html_name = Path(save_dir) / "TI_boxplot.html"
-        fig_ti.write_html(html_name)
-        print(f"TI plot is saved in: {html_name}")
-
-        if show_plot:
-            fig_ti.show()
+        _handle_plot(
+            fig_ti,
+            html_name,
+            show_plots=show_plots,
+            save_plots=save_plots,
+            description="TI plot",
+        )
 
         # --------------------------------------------------------------
         # extra TI plots
@@ -475,11 +537,13 @@ def run_program_from_input(input_file: str | Path):
                 )
 
                 html_name = Path(save_dir) / f"TI_timeseries_{int(hub_height)}m.html"
-                fig_ti_hub.write_html(html_name)
-                print(f"TI time series plot is saved in: {html_name}")
-
-                if show_plot:
-                    fig_ti_hub.show()
+                _handle_plot(
+                    fig_ti_hub,
+                    html_name,
+                    show_plots=show_plots,
+                    save_plots=save_plots,
+                    description="TI time series plot",
+                )
 
             # Mean TI vs height
             ti_mean_by_height = (
@@ -507,11 +571,13 @@ def run_program_from_input(input_file: str | Path):
             )
 
             html_name = Path(save_dir) / "TI_mean_vs_height.html"
-            fig_ti_mean.write_html(html_name)
-            print(f"Mean TI vs height plot is saved in: {html_name}")
-
-            if show_plot:
-                fig_ti_mean.show()
+            _handle_plot(
+                fig_ti_mean,
+                html_name,
+                show_plots=show_plots,
+                save_plots=save_plots,
+                description="Mean TI vs height plot",
+            )
 
             # TI vs wind speed at hub height
             hub_col = f"Horizontal Wind Speed (m/s) at {int(hub_height)}m"
@@ -542,11 +608,13 @@ def run_program_from_input(input_file: str | Path):
                     )
 
                     html_name = Path(save_dir) / f"TI_vs_wsp_{int(hub_height)}m.html"
-                    fig_ti_scatter.write_html(html_name)
-                    print(f"TI vs wind speed plot is saved in: {html_name}")
-
-                    if show_plot:
-                        fig_ti_scatter.show()
+                    _handle_plot(
+                        fig_ti_scatter,
+                        html_name,
+                        show_plots=show_plots,
+                        save_plots=save_plots,
+                        description="TI vs wind speed plot",
+                    )
 
         print("TI is calculated and plotted successfully.")
 
@@ -612,11 +680,13 @@ def run_program_from_input(input_file: str | Path):
         )
 
         html_name = Path(save_dir) / "shear_plot.html"
-        fig_shear.write_html(html_name)
-        print(f"Shear plot is saved in: {html_name}")
-
-        if show_plot:
-            fig_shear.show()
+        _handle_plot(
+            fig_shear,
+            html_name,
+            show_plots=show_plots,
+            save_plots=save_plots,
+            description="Shear plot",
+        )
 
         # --------------------------------------------------------------
         # extra shear plots
@@ -642,11 +712,13 @@ def run_program_from_input(input_file: str | Path):
             )
 
             html_name = Path(save_dir) / "shear_alpha_histogram.html"
-            fig_alpha_hist.write_html(html_name)
-            print(f"Alpha histogram is saved in: {html_name}")
-
-            if show_plot:
-                fig_alpha_hist.show()
+            _handle_plot(
+                fig_alpha_hist,
+                html_name,
+                show_plots=show_plots,
+                save_plots=save_plots,
+                description="Alpha histogram",
+            )
 
             # Boxplot of alpha by hour of day
             alpha_hour = shear_values.alpha.dropna().to_frame(name="alpha")
@@ -664,11 +736,13 @@ def run_program_from_input(input_file: str | Path):
             fig_alpha_hour.update_yaxes(title="Alpha [-]")
 
             html_name = Path(save_dir) / "shear_alpha_by_hour.html"
-            fig_alpha_hour.write_html(html_name)
-            print(f"Alpha by hour plot is saved in: {html_name}")
-
-            if show_plot:
-                fig_alpha_hour.show()
+            _handle_plot(
+                fig_alpha_hour,
+                html_name,
+                show_plots=show_plots,
+                save_plots=save_plots,
+                description="Alpha by hour plot",
+            )
 
             # Alpha vs hub-height wind speed
             hub_col = f"Horizontal Wind Speed (m/s) at {int(hub_height)}m"
@@ -697,11 +771,13 @@ def run_program_from_input(input_file: str | Path):
                 html_name = (
                     Path(save_dir) / f"shear_alpha_vs_wsp_{int(hub_height)}m.html"
                 )
-                fig_alpha_wsp.write_html(html_name)
-                print(f"Alpha vs wind speed plot is saved in: {html_name}")
-
-                if show_plot:
-                    fig_alpha_wsp.show()
+                _handle_plot(
+                    fig_alpha_wsp,
+                    html_name,
+                    show_plots=show_plots,
+                    save_plots=save_plots,
+                    description="Alpha vs wind speed plot",
+                )
 
             # Wind speed profile for selected timestamps
             selected_times = wsp_profiles.index[:: max(1, len(wsp_profiles) // 5)]
@@ -725,11 +801,13 @@ def run_program_from_input(input_file: str | Path):
             )
 
             html_name = Path(save_dir) / "wind_speed_profiles_selected_times.html"
-            fig_profile.write_html(html_name)
-            print(f"Wind speed profile plot is saved in: {html_name}")
-
-            if show_plot:
-                fig_profile.show()
+            _handle_plot(
+                fig_profile,
+                html_name,
+                show_plots=show_plots,
+                save_plots=save_plots,
+                description="Wind speed profile plot",
+            )
 
         print("Shear is calculated and plotted successfully.")
 

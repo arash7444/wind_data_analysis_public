@@ -10,7 +10,8 @@
   "polar_stat": "median",
   "polar_ncols": 2,
   "shear_window": 6,
-  "show_plot": false,
+  "show_plots": false,
+  "save_plots": true,
   "save_dir": "outputs/extended",
   "extra_plots": true
 }

@@ -3,6 +3,7 @@
   "start_date_Metmast": "2020-06-07",
   "end_date_Metmast": "2020-06-08",
   "features": ["metmast_data"],
-  "show_plot": false,
+  "show_plots": false,
+  "save_plots": true,
   "save_dir": "outputs/metmast_data"
 }

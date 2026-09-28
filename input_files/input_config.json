@@ -6,7 +6,8 @@
   "features": ["ti", "shear"],
   "hub_height": 120.0,
   "shear_window": 6,
-  "show_plot": true,
+  "show_plots": true,
+  "save_plots": true,
   "save_dir": "outputs",
   "extra_plots": true
 }

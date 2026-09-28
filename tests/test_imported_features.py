@@ -48,10 +48,14 @@ def test_statistics_selects_nearest_height_and_preserves_values():
     times = pd.date_range("2020-05-01", periods=2, freq="10min")
     frames = [pd.DataFrame({"Horizontal Wind Speed (m/s) at 139m": [i, i+1]},
                            index=times) for i in [5, 8, 3, 1]]
-    fig, height = plot_wind_statistics(*frames, height=120)
+    subplot_fig, single_fig, height = plot_wind_statistics(*frames, height=120)
     assert height == 139
-    assert "139 m" in fig.layout.title.text
-    for trace, frame in zip(fig.data, frames):
+    assert "139 m" in subplot_fig.layout.title.text
+    assert "139 m" in single_fig.layout.title.text
+    for trace, frame in zip(subplot_fig.data, frames):
+        np.testing.assert_array_equal(trace.y, frame.iloc[:, 0])
+        np.testing.assert_array_equal(pd.to_datetime(trace.x), times)
+    for trace, frame in zip(single_fig.data, frames):
         np.testing.assert_array_equal(trace.y, frame.iloc[:, 0])
         np.testing.assert_array_equal(pd.to_datetime(trace.x), times)
 
@@ -100,9 +104,9 @@ def test_runner_with_sample_data(tmp_path, monkeypatch, folder):
         captured[Path(path).name] = fig
 
     monkeypatch.setattr(go.Figure, "write_html", capture_html)
-    monkeypatch.setattr(go.Figure, "show", lambda *a, **kw: pytest.fail("show_plot=False ignored"))
+    monkeypatch.setattr(go.Figure, "show", lambda *a, **kw: pytest.fail("show_plots=False ignored"))
     runner.run_program_from_input(config_path)
-    assert {"TI_polar_by_height.html", "stats_139m.html", "TI_boxplot.html",
+    assert {"TI_polar_by_height.html", "stats_139m.html", "stats_single_139m.html", "TI_boxplot.html",
             "shear_plot.html", "TI_vs_wsp_139m.html"} <= captured.keys()
     polar = captured["TI_polar_by_height.html"]
     assert len(polar.data) == 4
@@ -110,3 +114,52 @@ def test_runner_with_sample_data(tmp_path, monkeypatch, folder):
     times = pd.to_datetime(captured["TI_timeseries_139m.html"].data[0].x)
     assert times.min() >= pd.Timestamp("2020-05-01")
     assert times.max() < pd.Timestamp("2020-05-03")
+
+
+def test_runner_can_show_plots_without_saving_them(tmp_path, monkeypatch):
+    """Verify ``show_plots`` and ``save_plots`` operate independently.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory used for the runner configuration.
+    monkeypatch : pytest.MonkeyPatch
+        Fixture used to observe plotting side effects.
+
+    Returns
+    -------
+    None
+        Assertions confirm both statistics figures show and neither is saved.
+
+    Example
+    -------
+    Run with ``pytest -k show_plots_without_saving``.
+    """
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("runner_flags", root / "run_wind_analysis.py")
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    shown = []
+    monkeypatch.setattr(go.Figure, "show", lambda figure, *args, **kwargs: shown.append(figure))
+    monkeypatch.setattr(
+        go.Figure,
+        "write_html",
+        lambda *args, **kwargs: pytest.fail("save_plots=False ignored"),
+    )
+    config = {
+        "data_folder_lidar": str(root / "tests/lidar_data_10min"),
+        "start_date_lidar": "2020-05-01",
+        "end_date_lidar": "2020-05-02",
+        "features": ["stats"],
+        "stats_height": 139.0,
+        "show_plots": True,
+        "save_plots": False,
+        "save_dir": str(tmp_path / "outputs"),
+    }
+    config_path = tmp_path / "flags.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    runner.run_program_from_input(config_path)
+
+    assert len(shown) == 2

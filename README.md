@@ -168,7 +168,8 @@ Example (`input_files/input_config.json`):
     "features": ["shear", "ti"],
     "hub_height": 120.0,
     "shear_window": 6,
-    "show_plot": true,
+    "show_plots": true,
+    "save_plots": true,
     "save_dir": "outputs"
 }
 ```
@@ -185,7 +186,8 @@ Behavior:
 
 - Reads `input_files/input_config.json`
 - Supports `ti` and `shear`
-- Saves interactive Plotly HTML outputs to `save_dir`
+- Displays Plotly figures when `show_plots` is `true`
+- Saves interactive Plotly HTML outputs when `save_plots` is `true`
 
 ### Option B: Streamlit App
 
@@ -209,8 +211,9 @@ uv run python run_wind_analysis.py input_files/input_config_extended.json
 ```
 
 This saves interactive HTML plots in `outputs/extended/`, including
-`TI_polar_by_height.html` and `stats_139m.html`. Open them in a browser.
-The example uses `show_plot: false`, so no browser windows open automatically.
+`TI_polar_by_height.html`, `stats_139m.html`, and `stats_single_139m.html`.
+Open them in a browser. The example uses `show_plots: false` and
+`save_plots: true`, so files are saved without opening browser windows.
 Running `uv run python run_wind_analysis.py` still uses the original configuration.
 
 Add the feature names to your JSON `features` list and set these options:
@@ -221,6 +224,13 @@ Add the feature names to your JSON `features` list and set these options:
 | `polar_heights` | List of exact measured heights, such as `[19, 59, 139, 199]`; unavailable heights produce an error | All heights with valid binned TI data |
 | `polar_stat` | `median` or `mean` TI within each speed/direction bin | `median` |
 | `polar_ncols` | Positive integer giving the number of polar subplot columns | `2` |
+| `show_plots` | Display every generated Plotly figure | `true` |
+| `save_plots` | Save every generated Plotly figure as HTML under `save_dir` | `true` |
+
+The two plot-output flags are independent. For example, set
+`"show_plots": true` and `"save_plots": false` to display figures without
+writing HTML. The older `show_plot` key remains accepted as a fallback, but new
+configurations should use `show_plots`.
 
 Polar angle is wind direction at each plotted height, with north at the top
 and angles increasing clockwise. Radius is the centre of the **reference-height
@@ -237,11 +247,19 @@ numbers; leave the field blank to plot all available heights.
 For Python use, both plotting functions return figures without displaying them:
 
 ```python
-from wind_data_analysis.plotting import plot_ti_polar_by_height
+from wind_data_analysis.plotting import plot_ti_polar_by_height, plot_wind_statistics
 
 # ti_values comes from calc_ti(...).
 fig = plot_ti_polar_by_height(ti_values.ti_raw, heights=[19, 139])
 fig.show()  # Or fig.write_html("ti_polar.html")
+```
+
+`plot_wind_statistics` returns both layouts without displaying either one:
+
+```python
+subplot_fig, single_fig, selected_height = plot_wind_statistics(
+    average, maximum, minimum, standard_deviation, height=120.0
+)
 ```
 
 ## LiDAR and met-mast comparison
@@ -279,7 +297,8 @@ The flat JSON configuration is:
   "features": ["metmast_comparison"],
   "max_height_difference_m": 2.0,
   "timestamp_tolerance_seconds": 30.0,
-  "show_plot": false,
+  "show_plots": false,
+  "save_plots": true,
   "save_dir": "outputs/metmast_comparison"
 }
 ```
@@ -370,7 +389,8 @@ counts, and mean wind speed. Its configuration is:
   "start_date_Metmast": "2020-06-07",
   "end_date_Metmast": "2020-06-08",
   "features": ["metmast_data"],
-  "show_plot": false,
+  "show_plots": false,
+  "save_plots": true,
   "save_dir": "outputs/metmast_data"
 }
 ```

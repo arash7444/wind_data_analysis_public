@@ -10,6 +10,9 @@ from wind_data_analysis.process import calc_shear, calc_ti
 
 from demo_support import REPOSITORY_ROOT, load_lidar_statistics, make_output_directory
 
+SHOW_PLOTS = True
+SAVE_PLOTS = True
+
 
 def main() -> None:
     """Load, validate, analyze, plot, and report bundled LiDAR measurements.
@@ -50,11 +53,9 @@ def main() -> None:
         standard_deviation,
         height=139.0,
     )
-    statistics_figure_subplot.write_html(output_directory / "wind_statistics_subplot.html")
-    statistics_figure.write_html(output_directory / "wind_statistics.html")
-    plot_ti_polar_by_height(
+    polar_figure = plot_ti_polar_by_height(
         ti_values.ti_raw, heights=[19.0, 59.0, 139.0, 199.0]
-    ).write_html(output_directory / "ti_polar.html")
+    )
 
     ti_boxplot = px.box(
         ti_values.ti_raw,
@@ -63,7 +64,6 @@ def main() -> None:
         points=False,
         title="Turbulence intensity distribution by height",
     )
-    ti_boxplot.write_html(output_directory / "ti_boxplot.html")
 
     shear_figure = go.Figure(
         go.Scatter(
@@ -76,7 +76,18 @@ def main() -> None:
     shear_figure.update_layout(
         title="Power-law shear exponent", xaxis_title="Time", yaxis_title="Alpha [-]"
     )
-    shear_figure.write_html(output_directory / "shear_alpha.html")
+    figures = {
+        "wind_statistics_subplot.html": statistics_figure_subplot,
+        "wind_statistics.html": statistics_figure,
+        "ti_polar.html": polar_figure,
+        "ti_boxplot.html": ti_boxplot,
+        "shear_alpha.html": shear_figure,
+    }
+    for filename, figure in figures.items():
+        if SAVE_PLOTS:
+            figure.write_html(output_directory / filename)
+        if SHOW_PLOTS:
+            figure.show()
 
     ti_values.ti_median.to_csv(output_directory / "median_ti_by_height.csv", index=False)
     shear_values.alpha.to_csv(output_directory / "shear_alpha.csv", header=True)
@@ -97,7 +108,8 @@ def main() -> None:
     )
 
     print(json.dumps(summary, indent=2))
-    print(f"Saved the complete workflow outputs in: {output_directory}")
+    if SAVE_PLOTS:
+        print(f"Saved the complete workflow outputs in: {output_directory}")
 
 
 if __name__ == "__main__":
