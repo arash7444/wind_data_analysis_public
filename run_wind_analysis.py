@@ -816,5 +816,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run wind analysis from a JSON config.")
-    parser.add_argument("config", nargs="?", default="input_files/input_config.json")
+    # parser.add_argument("config", nargs="?", default="input_files/input_config.json")
+    parser.add_argument("config", nargs="?", default="input_files/input_config_metmast_comparison.json")
+
+    
     run_program_from_input(parser.parse_args().config)
